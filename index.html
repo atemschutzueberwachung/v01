@@ -300,6 +300,22 @@ function licenseStatusText(lic){
   return '🟢 Aktiv<br>Zuletzt geprüft: '+last+(frisch ? '' : '<br>Offline-Karenz bis: '+until);
 }
 window.asueLicenseStatusText = licenseStatusText;
+window.asueLicenseActions = {
+  // Sofort beim Server prüfen (z. B. nach einer Verlängerung); jederzeit gefahrlos
+  check: async function(){
+    licenseCheckAt = 0;
+    const st = await checkLicense();
+    updateLicenseBanner(); refreshLicenseFooter();
+    return st;
+  },
+  // Lizenz auf diesem Gerät entfernen und neu eingeben; nie während eines laufenden Einsatzes
+  change: function(){
+    if(state){ alert('Während eines laufenden Einsatzes kann die Lizenz nicht gewechselt werden. Bitte zuerst den Einsatz beenden oder verlassen.'); return; }
+    if(!confirm('Lizenz auf diesem Gerät entfernen und eine andere Lizenz eingeben?')) return;
+    try{ localStorage.removeItem('asue:lizenz'); }catch(e){}
+    render();
+  }
+};
 let licenseShownSt = '';
 function refreshLicenseFooter(){ try{ if(window.renderV111License) window.renderV111License(); }catch(e){} }
 // ---- Ende Lizenzregeln ----
@@ -838,6 +854,7 @@ function isReadOnlyRole(){ const r=getRole(); return r==='einsatzleiter' || r===
     try{
       if(!window.__audioCtx) window.__audioCtx = new (window.AudioContext||window.webkitAudioContext)();
       const audioCtx = window.__audioCtx;
+      if(audioCtx.state === 'suspended') audioCtx.resume();
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.frequency.value = freq;
@@ -850,7 +867,7 @@ function isReadOnlyRole(){ const r=getRole(); return r==='einsatzleiter' || r===
   }
   function alarmDouble(){ beep(880,180); setTimeout(()=>beep(880,180),260); }
   function alarmTriple(){ beep(1046,150); setTimeout(()=>beep(1046,150),200); setTimeout(()=>beep(1046,150),400); }
-  function alarmDruck(){ beep(600,120); setTimeout(()=>beep(600,120),200); }
+  function alarmDruck(){ beep(600,120); setTimeout(()=>beep(600,120),200); try{ if(navigator.vibrate) navigator.vibrate([200,100,200]); }catch(e){} }
 
   function fmtTime(d){ return d.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit', second:'2-digit'}); }
   function fmtClock(seconds){
@@ -1115,7 +1132,7 @@ function isReadOnlyRole(){ const r=getRole(); return r==='einsatzleiter' || r===
 
     app.innerHTML = `
       <header class="top">
-        <div class="brand"><div><h1>Atemschutzüberwachung</h1><div class="creator-inline">Created by Henning Ludwig <span class="version-inline">• Version 1.1.8</span></div></div><span class="sub">Live</span><span class="cloud-badge">● Mehrgeräte-Cloud</span></div>
+        <div class="brand"><div><h1>Atemschutzüberwachung</h1><div class="creator-inline">Created by Henning Ludwig <span class="version-inline">• Version 1.1.9</span></div></div><span class="sub">Live</span><span class="cloud-badge">● Mehrgeräte-Cloud</span></div>
         <div style="display:flex; gap:8px;">
           <button class="btn small" id="btn-role">${esc(roleLabel())}</button><button class="btn small" id="btn-history">Gespeicherte Einsätze</button><button class="btn small" id="btn-einsatz-qr">QR-Code</button>
           <button class="btn small" id="btn-nachweis">Nachweis / Export</button>
@@ -2184,6 +2201,8 @@ if(!history.length){
   }
   // ---------- Timer / Erinnerungs-Loop ----------
   const warned = {};
+  const DRUCK_REPEAT_SEC = 30;   // solange die Druckabfrage offen ist, alle 30 s erneut erinnern
+  const druckRepeatAt = {};
   function tickWarnings(){
     if(!state) return;
     let changed = false;
@@ -2209,7 +2228,11 @@ if(!history.length){
           t.druckReminderLastAlarmAt = reminderIndex;
           addLog(t, 'Erinnerung: Druckabfrage fällig (' + (reminderIndex * DRUCK_INTERVAL_MIN) + ' min seit letzter Abfrage)');
           alarmDruck();
+          druckRepeatAt[t.id] = Date.now();
           changed = true;
+        } else if(Date.now() - (druckRepeatAt[t.id]||0) >= DRUCK_REPEAT_SEC*1000){
+          druckRepeatAt[t.id] = Date.now();
+          alarmDruck();
         }
       }
     });
@@ -2224,6 +2247,22 @@ if(!history.length){
       restoreLogScrollPositions(logScrollPositions);
     }
   }
+  // Display an lassen, solange mindestens ein Trupp aktiv ist (sonst können Alarme im Hintergrund ausbleiben)
+  let wakeLock = null;
+  async function keepScreenAwake(){
+    try{
+      if(!('wakeLock' in navigator)) return;
+      const need = !!(state && state.trupps && state.trupps.some(t=>t.status==='aktiv'));
+      if(need && !wakeLock && document.visibilityState==='visible'){
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', ()=>{ wakeLock = null; });
+      } else if(!need && wakeLock){
+        await wakeLock.release(); wakeLock = null;
+      }
+    }catch(e){ wakeLock = null; }
+  }
+  setInterval(keepScreenAwake, 5000);
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') keepScreenAwake(); });
   setInterval(tickWarnings, 1000);
   setInterval(()=>syncOfflineEinsatzIfPossible(), 15000);
   setInterval(()=>touchParticipant(), 30000);
@@ -2440,8 +2479,19 @@ function renderV111License(){
     "<b>" + code + "</b><br>" +
     (window.asueLicenseStatusText ? window.asueLicenseStatusText(l).replace("<br>", " · gültig bis " + date + "<br>") : "🟢 Aktiv · gültig bis " + date) + "<br>" +
     "Gerät: <b>" + device + "</b><br>" +
-    "Geräte-ID: " + deviceId;
+    "Geräte-ID: " + deviceId +
+    '<div style="margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
+    '<button class="btn ghost small" id="asue-lic-check">Jetzt prüfen</button>' +
+    '<button class="btn ghost small" id="asue-lic-change">Lizenz wechseln</button></div>';
   document.body.appendChild(div);
+  const bCheck=div.querySelector("#asue-lic-check"), bChange=div.querySelector("#asue-lic-change");
+  bCheck.onclick=async function(){
+    if(!window.asueLicenseActions) return;
+    bCheck.disabled=true; bCheck.textContent="Prüfe …";
+    try{ await window.asueLicenseActions.check(); }catch(e){}
+    bCheck.disabled=false; bCheck.textContent="Jetzt prüfen";
+  };
+  bChange.onclick=function(){ if(window.asueLicenseActions) window.asueLicenseActions.change(); };
 }
 
 window.addEventListener("load", renderV111License);
