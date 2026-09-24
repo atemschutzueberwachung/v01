@@ -1,0 +1,2451 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#14171a">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Atemschutzüberwachung – v35</title>
+<script src="./jsQR.js"></script>
+<script src="./qrcode-generator.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// Offline-Vorbereitung: Die beiden Bibliotheken werden bei bestehender Verbindung einmal
+// geladen, damit der Service Worker sie anschließend für den Offlinebetrieb cachen kann.
+(function(){
+  const libs=[
+    
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+  ];
+  if(navigator.onLine && 'serviceWorker' in navigator){
+    window.addEventListener('load',()=>{
+      setTimeout(()=>{
+        libs.forEach(u=>fetch(u,{cache:'reload'}).catch(()=>{}));
+      },500);
+    });
+  }
+})();
+</script>
+<style>
+  :root{
+    --bg: #14171a;
+    --panel: #1d2226;
+    --panel-2: #262c31;
+    --line: #333b41;
+    --text: #eef1f3;
+    --text-dim: #9aa4ab;
+    --red: #d1352b;
+    --red-dim: #7a231d;
+    --amber: #e0a527;
+    --green: #3fa66b;
+    --blue: #3f8ae0;
+    --violet: #7a6ff0;
+    --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    --sans: -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html,body{margin:0; height:100%; background:var(--bg); color:var(--text); font-family:var(--sans); overscroll-behavior:none;}
+  body{padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); user-select:none;}
+  #app{max-width:1400px; margin:0 auto; padding:18px 20px 60px;}
+  .version-inline{opacity:.75; margin-left:5px;}
+  .creator-inline{color:var(--text-dim); font-size:10px; line-height:1.2; letter-spacing:.1px; margin-top:2px;}
+  .cloud-badge{font-size:11px; padding:4px 8px; border-radius:7px; background:rgba(63,166,107,.16); color:var(--green); border:1px solid rgba(63,166,107,.35);}
+  .cloud-badge.offline{background:rgba(224,165,39,.12); color:var(--amber); border-color:rgba(224,165,39,.35);}
+  .login-card{max-width:460px; margin:80px auto; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:28px;}
+  .login-card h2{margin:0 0 8px;}
+  .login-note{color:var(--text-dim); font-size:13px; line-height:1.45; margin-bottom:20px;}
+  .role-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;}
+  .role-btn{padding:18px 12px;border-radius:12px;background:var(--panel-2);color:var(--text);border:1px solid var(--line);font-size:16px;font-weight:700;text-align:center;}
+  .role-btn:active{transform:scale(.98);}
+  .role-btn.selected{background:var(--blue);border-color:var(--blue);color:#fff;}
+  @media(max-width:600px){.role-grid{grid-template-columns:1fr;}}
+  .code-input{text-transform:uppercase; letter-spacing:3px; font-family:var(--mono); text-align:center; font-size:20px !important;}
+
+  header.top{display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; flex-wrap:wrap; gap:10px;}
+  header.top .brand{display:flex; align-items:baseline; gap:12px;}
+  header.top h1{font-size:22px; font-weight:700; margin:0; letter-spacing:0.2px;}
+  header.top .sub{color:var(--text-dim); font-size:14px;}
+  .einsatz-meta{display:flex; gap:18px; flex-wrap:wrap; color:var(--text-dim); font-size:13px;}
+  .einsatz-meta b{color:var(--text); font-weight:600;}
+
+  button{font-family:inherit; cursor:pointer; border:none;}
+  .btn{padding:12px 18px; border-radius:10px; font-size:15px; font-weight:600; background:var(--panel-2); color:var(--text); border:1px solid var(--line);}
+  .btn:active{transform:scale(0.97);}
+  .btn.primary{background:var(--blue); border-color:var(--blue); color:#fff;}
+  .btn.danger{background:var(--red); border-color:var(--red); color:#fff;}
+  .btn.good{background:var(--green); border-color:var(--green); color:#fff;}
+  .btn.warnbtn{background:var(--amber); border-color:var(--amber); color:#1a1500;}
+  .btn.violet{background:var(--violet); border-color:var(--violet); color:#fff;}
+  .btn.ghost{background:transparent;}
+  .btn.small{padding:8px 12px; font-size:13px; border-radius:8px;}
+  .btn:disabled{opacity:0.35;}
+
+  .setup-card{max-width:520px; margin:60px auto; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:28px;}
+  .setup-card h2{margin-top:0; font-size:19px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:13px; color:var(--text-dim); margin-bottom:6px;}
+  .field input, .field select{width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--line); background:var(--panel-2); color:var(--text); font-size:16px;}
+  .field input:focus, .field select:focus{outline:2px solid var(--blue);}
+
+  h2.section-title{font-size:14px; text-transform:none; color:var(--text-dim); font-weight:600; margin:26px 0 10px; border-bottom:1px solid var(--line); padding-bottom:6px;}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:14px; margin-top:10px;}
+
+  .trupp{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; position:relative; overflow:hidden;}
+  .trupp::before{content:""; position:absolute; left:0; top:0; bottom:0; width:6px;}
+  .trupp.status-prep::before{background:var(--text-dim);}
+  .trupp.status-ok::before{background:var(--green);}
+  .trupp.status-warn1::before{background:var(--amber);}
+  .trupp.status-warn2::before{background:var(--red);}
+  .trupp.status-ended::before{background:var(--text-dim);}
+  .trupp.druck-faellig{box-shadow:0 0 0 2px var(--red) inset; animation:druckCardBlink 1s steps(2,start) infinite;}
+  @keyframes druckCardBlink{0%,49%{box-shadow:0 0 0 2px var(--red) inset,0 0 0 0 rgba(209,53,43,0);}50%,100%{box-shadow:0 0 0 3px var(--red) inset,0 0 14px 2px rgba(209,53,43,0.35);}}
+  .trupp.sofort{box-shadow:0 0 0 2px var(--red) inset;}
+
+  .sofort-banner{background:var(--red); color:#fff; padding:9px 10px; border-radius:8px; font-weight:700; font-size:13px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:8px;}
+  .sofort-banner button{background:rgba(255,255,255,0.18); color:#fff; border:1px solid rgba(255,255,255,0.4);}
+
+  .trupp-head{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;}
+  .trupp-head h3{margin:0; font-size:17px;}
+  .trupp-head .badge{font-size:11px; padding:3px 8px; border-radius:6px; font-weight:700;}
+  .badge.prep{background:rgba(154,164,171,0.18); color:var(--text-dim);}
+  .badge.ok{background:rgba(63,166,107,0.18); color:var(--green);}
+  .badge.warn1{background:rgba(224,165,39,0.18); color:var(--amber);}
+  .badge.warn2{background:rgba(209,53,43,0.18); color:var(--red);}
+  .badge.ended{background:rgba(154,164,171,0.18); color:var(--text-dim);}
+  .badge.druck{background:var(--red); color:#fff; animation:druckBadgeBlink 0.9s steps(2,start) infinite;}
+  @keyframes druckBadgeBlink{0%,49%{opacity:1;}50%,100%{opacity:.28;}}
+
+  .timer{font-family:var(--mono); font-size:34px; font-weight:600; letter-spacing:1px; margin:6px 0 2px;}
+  .timer-sub{font-size:12px; color:var(--text-dim); margin-bottom:12px;}
+
+  .members{font-size:13px; color:var(--text-dim); margin-bottom:12px; line-height:1.5;}
+  .members b{color:var(--text); font-weight:600;}
+
+  .druck-summary{font-size:12px; color:var(--text-dim); margin-bottom:10px; background:var(--panel-2); border-radius:8px; padding:8px 10px;}
+  .druck-summary div{display:flex; justify-content:space-between; padding:2px 0;}
+  .druck-summary b{color:var(--text);}
+  .druck-summary .low{color:var(--red); font-weight:700;}
+
+  .trupp-actions{display:flex; gap:8px; flex-wrap:wrap;}
+  .quick-buttons{display:flex; gap:7px; flex-wrap:wrap; margin-top:7px;}
+  .quick-btn{padding:9px 12px; border-radius:9px; font-size:13px; font-weight:700; background:var(--panel-2); color:var(--text); border:1px solid var(--line);}
+  .quick-btn.selected{background:var(--blue); border-color:var(--blue); color:#fff;}
+  .quick-btn.event{background:rgba(63,138,224,.12); border-color:rgba(63,138,224,.45);}
+  .quick-btn.event:active,.quick-btn:active{transform:scale(.97);}
+  .event-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:10px;}
+  .event-grid .quick-btn{min-height:48px;}
+  @media (max-width:600px){ .event-grid{grid-template-columns:1fr 1fr;} }
+
+  .log-mini{margin-top:10px; font-size:11px; color:var(--text-dim); border-top:1px solid var(--line); padding-top:8px; max-height:70px; overflow:auto;}
+
+  /* modal */
+  .overlay{position:fixed; inset:0; background:rgba(10,12,14,0.72); display:flex; align-items:center; justify-content:center; z-index:50; padding:20px;}
+  .modal{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:22px; width:100%; max-width:520px; max-height:88vh; overflow:auto;}
+  .modal h2{margin-top:0; font-size:19px;}
+  .member-row{display:flex; gap:8px; align-items:flex-end; margin-bottom:10px; flex-wrap:wrap;}
+  .member-row .field{flex:1; margin-bottom:0; min-width:110px;}
+  .scan-box{position:relative; border-radius:12px; overflow:hidden; background:#000; aspect-ratio:1/1; max-width:340px; margin:0 auto 14px;}
+  .scan-box video{width:100%; height:100%; object-fit:cover;}
+  .scan-hint{position:absolute; bottom:8px; left:0; right:0; text-align:center; font-size:12px; color:#fff; background:rgba(0,0,0,0.5); padding:4px;}
+  .modal-actions{display:flex; justify-content:flex-end; gap:10px; margin-top:16px; flex-wrap:wrap;}
+
+  table.nachweis{width:100%; border-collapse:collapse; font-size:13px; margin-top:10px;}
+  table.nachweis th, table.nachweis td{border-bottom:1px solid var(--line); padding:8px 6px; text-align:left;}
+  table.nachweis th{color:var(--text-dim); font-weight:600; font-size:12px;}
+
+  .empty{text-align:center; color:var(--text-dim); padding:40px 20px; font-size:15px;}
+
+  @media (max-width:600px){
+    .timer{font-size:28px;}
+    header.top h1{font-size:19px;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+(function(){
+
+  const STORE_KEY = 'atemschutz:einsatz';
+
+  const LICENSE_KEY = 'asue:lizenz';
+  const LICENSE_SERVER = 'https://license.rabenhorstacht.de/api';
+
+  function getLicense(){
+    try { return JSON.parse(localStorage.getItem(LICENSE_KEY) || 'null'); }
+    catch(e){ return null; }
+  }
+
+  function saveLicense(data){
+    localStorage.setItem(LICENSE_KEY, JSON.stringify(data));
+  }
+
+  // ---- Lizenzregeln v1.1.3 ----
+// Grundsatz: Die Lizenzprüfung unterbricht nie einen laufenden Einsatz.
+const LICENSE_GRACE_DAYS = 14;               // Offline-Karenz seit letzter erfolgreicher Prüfung
+const LICENSE_RECHECK_MS = 6*3600*1000;      // Hintergrundprüfung
+const LICENSE_RECHECK_SETUP_MS = 10*60*1000; // auf dem Startbildschirm (neuer Einsatz / Beitreten)
+let licenseCheckAt = 0;
+let licenseChecking = false;
+
+// Status aus den lokal gespeicherten Daten (synchron, ohne Netzwerk):
+// 'none' | 'ok' | 'invalid' | 'grace-expired'
+function licenseStatus(){
+  const lic=getLicense();
+  if(!lic) return 'none';
+  if(lic.gesperrt) return 'invalid';
+  if(!lic.letztePruefung){ lic.letztePruefung=Date.now(); saveLicense(lic); } // Bestandsgeräte: Karenz startet jetzt
+  const days=(Date.now()-lic.letztePruefung)/86400000;
+  if(days>LICENSE_GRACE_DAYS) return 'grace-expired';
+  return 'ok';
+}
+function licenseBlocksNewEinsatz(){
+  const st=licenseStatus();
+  return st==='invalid' || st==='grace-expired';
+}
+
+// Fragt den Server. Nur eine eindeutige Antwort (ok:true / ok:false) ändert etwas.
+// Serverfehler (5xx), Timeout, kein JSON oder unerwartete Antwort zählen wie offline.
+async function checkLicense(){
+  const lic=getLicense();
+  if(!lic) return 'none';
+  let d=null, http=0;
+  try{
+    const ctrl=new AbortController();
+    const to=setTimeout(()=>ctrl.abort(),8000);
+    try{
+      const r=await fetch(LICENSE_SERVER+'/validieren',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({geraete_id:lic.geraete_id}),
+        signal:ctrl.signal
+      });
+      http=r.status;
+      d=await r.json();
+    }finally{ clearTimeout(to); }
+  }catch(e){ return licenseStatus(); }
+  if(http>=500 || !d || typeof d.ok!=='boolean') return licenseStatus();
+  const cur=getLicense()||lic;
+  if(d.ok===true){
+    cur.letztePruefung=Date.now(); cur.gesperrt=false; delete cur.sperrGrund;
+    // Verlängerung übernehmen: Laufzeit/Feuerwehr aus der Serverantwort, falls mitgeliefert
+    const src=(d.lizenz&&typeof d.lizenz==='object') ? d.lizenz : ((d.license&&typeof d.license==='object') ? d.license : d);
+    if(typeof src.gueltig_bis==='string' && src.gueltig_bis) cur.gueltig_bis=src.gueltig_bis;
+    if(typeof src.feuerwehr==='string' && src.feuerwehr) cur.feuerwehr=src.feuerwehr;
+    if(typeof src.geraete_name==='string' && src.geraete_name) cur.geraete_name=src.geraete_name;
+  }
+  else { cur.gesperrt=true; cur.sperrGrund=d.error||''; }
+  saveLicense(cur);
+  return licenseStatus();
+}
+
+// Nicht blockierend und gedrosselt: beim Start, auf dem Startbildschirm, sonst alle paar Stunden.
+function maybeCheckLicense(isSetup){
+  if(licenseChecking || !getLicense()) return;
+  const limit=isSetup ? LICENSE_RECHECK_SETUP_MS : LICENSE_RECHECK_MS;
+  if(Date.now()-licenseCheckAt<limit) return;
+  licenseChecking=true; licenseCheckAt=Date.now();
+  const before=licenseStatus();
+  checkLicense().then(after=>{
+    licenseChecking=false;
+    updateLicenseBanner();
+    refreshLicenseFooter();
+    if(!state && after!==before) render(); // nur ohne laufenden Einsatz neu zeichnen
+  }).catch(()=>{ licenseChecking=false; });
+}
+
+// Warnbanner, unabhängig vom Dashboard-Rendering (liegt direkt im body, blockiert keine Eingaben)
+function updateLicenseBanner(){
+  let el=document.getElementById('asue-lic-banner');
+  const st=licenseStatus();
+  if(licenseShownSt!==st){ licenseShownSt=st; refreshLicenseFooter(); }
+  if(st==='ok' || st==='none'){ if(el) el.remove(); return; }
+  if(!el){
+    el=document.createElement('div');
+    el.id='asue-lic-banner';
+    el.style.cssText='position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:40;background:var(--amber);color:#1a1500;padding:8px 12px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  el.textContent = st==='invalid'
+    ? '⚠️ Lizenz ungültig oder abgelaufen – ein laufender Einsatz ist nicht betroffen, neue Einsätze sind gesperrt.'
+    : '⚠️ Lizenz seit über '+LICENSE_GRACE_DAYS+' Tagen nicht geprüft – bitte online gehen. Neue Einsätze sind gesperrt.';
+}
+
+// Startbildschirm: neuer Einsatz gesperrt, Beitreten bleibt möglich
+function applyLicenseGate(){
+  if(!licenseBlocksNewEinsatz()) return;
+  const b=document.getElementById('btn-start-einsatz');
+  if(b) b.disabled=true;
+  const m=document.getElementById('setup-msg');
+  if(m){
+    m.style.color='var(--amber)';
+    m.textContent='Lizenz ungültig bzw. nicht geprüft: Neuer Einsatz gesperrt. Beitreten zu bestehenden Einsätzen ist weiter möglich.';
+  }
+}
+
+function licenseStatusText(lic){
+  const st=licenseStatus();
+  const last=lic.letztePruefung ? new Date(lic.letztePruefung).toLocaleString('de-DE',{dateStyle:'short',timeStyle:'short'}) : '-';
+  if(st==='invalid') return '🔴 Ungültig / abgelaufen<br>Zuletzt geprüft: '+last;
+  if(st==='grace-expired') return '🟠 Offline-Karenz abgelaufen<br>Zuletzt geprüft: '+last;
+  const until=new Date((lic.letztePruefung||Date.now())+LICENSE_GRACE_DAYS*86400000).toLocaleDateString('de-DE');
+  const frisch=(Date.now()-(lic.letztePruefung||0)) < LICENSE_RECHECK_MS*1.5;
+  return '🟢 Aktiv<br>Zuletzt geprüft: '+last+(frisch ? '' : '<br>Offline-Karenz bis: '+until);
+}
+window.asueLicenseStatusText = licenseStatusText;
+let licenseShownSt = '';
+function refreshLicenseFooter(){ try{ if(window.renderV111License) window.renderV111License(); }catch(e){} }
+// ---- Ende Lizenzregeln ----
+
+
+  
+function renderAsueLicenseBox(){
+  const lic = JSON.parse(localStorage.getItem('asue:lizenz') || 'null');
+  if(!lic) return '';
+  return `<div class="panel" style="margin-top:16px;padding:12px">
+    🔐 Lizenz<br>
+    Feuerwehr: ${esc(lic.feuerwehr || '-')}<br>
+    Lizenz: <b>${esc(lic.code || lic.lizenz_code || '-')}</b><br>
+    Status: ${licenseStatusText(lic)}<br>
+    Gültig bis: ${esc(lic.gueltig_bis || '-')}<br>
+    Gerät: ${esc(lic.geraete_name || '-')}
+  </div>`;
+}
+
+function renderLicenseSetup(){
+    app.innerHTML=`
+    <div class="setup-card">
+      <h2>Lizenz aktivieren</h2>
+      <div class="field"><label>Lizenzcode</label><input id="lic-code" placeholder="ASUE-XXXX-XXXX"></div>
+      <div class="field"><label>Gerätename</label><input id="lic-name" placeholder="Tablet ELW"></div>
+      <button class="btn primary" id="lic-btn" style="width:100%">Aktivieren</button>
+      <div id="lic-msg" style="margin-top:12px"></div>
+    </div>`;
+    document.getElementById('lic-btn').onclick=async()=>{
+      const msg=document.getElementById('lic-msg');
+      try{
+        const r=await fetch(LICENSE_SERVER+'/aktivieren',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({
+            code:document.getElementById('lic-code').value,
+            geraete_name:document.getElementById('lic-name').value
+          })
+        });
+        const d=await r.json();
+        if(d.ok){
+          const eingegebenerName=((document.getElementById('lic-name')||{}).value||'').trim();
+          saveLicense(Object.assign({},d,{
+            geraete_name: d.geraete_name || d.device_name || eingegebenerName,
+            letztePruefung:Date.now(), gesperrt:false
+          }));
+          render();
+        }else msg.textContent=d.error||'Fehler';
+      }catch(e){msg.textContent='Lizenzserver nicht erreichbar';}
+    };
+  }
+
+
+  const HISTORY_KEY = 'atemschutz:einsaetze';
+  const PDF_HISTORY_KEY = 'atemschutz:pdf:';
+  const ROLE_KEY = 'atemschutz:rolle';
+  const DRUCK_INTERVAL_MIN = 10; // Erinnerung alle 10 Minuten
+  const EDIT_ROLE_PIN = '0000'; // Schutz beim Wechsel aus reinen Lesemodus-Rollen
+
+  // Supabase / Mehrgeräte-Synchronisierung
+  const SUPABASE_URL = 'https://erhrmgilyevfnsbviiir.supabase.co';
+  const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_ZHw_OzSRWUha5iEk-ZtRzw_cxicrJ1j';
+  let sb = null;
+  let currentSession = null;
+  let cloudChannel = null;
+  let applyingCloudState = false;
+  let authReady = false;
+
+  const ROLE_LABELS = {
+    ueberwachung:'Atemschutzüberwachung',
+    fuehrung:'Gruppenführer / Führung',
+    einsatzleiter:'Einsatzleiter',
+    beobachter:'Beobachter',
+    admin:'Administrator'
+  };
+  function getRole(){ return localStorage.getItem(ROLE_KEY) || ''; }
+  function setRole(role){ localStorage.setItem(ROLE_KEY, role); }
+  function roleLabel(role=getRole()){ return ROLE_LABELS[role] || 'Benutzer'; }
+  function actionRoleLabel(role=getRole()){
+    if(role==='fuehrung') return 'Gruppenführer';
+    if(role==='ueberwachung') return 'Atemschutzüberwachung';
+    if(role==='admin') return 'Administrator';
+    if(role==='einsatzleiter') return 'Einsatzleiter';
+    if(role==='beobachter') return 'Beobachter';
+    return roleLabel(role);
+  }
+
+  async function touchParticipant(){
+    const client=cloudClient();
+    if(!client || !currentSession || !state?.einsatz?.cloudId || !navigator.onLine) return;
+    const {error}=await client.from('einsatz_teilnehmer')
+      .update({zuletzt_aktiv:new Date().toISOString()})
+      .eq('einsatz_id',state.einsatz.cloudId)
+      .eq('user_id',currentSession.user.id);
+    if(error) console.warn('Teilnehmer-Heartbeat fehlgeschlagen:',error);
+  }
+
+  async function checkOtherCaretakers(){
+    const client=cloudClient();
+    if(!client || !currentSession || !state?.einsatz?.cloudId) return {known:false,count:0,participants:[]};
+    if(!navigator.onLine) return {known:false,count:0,participants:[]};
+    const cutoff=new Date(Date.now()-120000).toISOString();
+    const {data,error}=await client.from('einsatz_teilnehmer')
+      .select('user_id,rolle,zuletzt_aktiv')
+      .eq('einsatz_id',state.einsatz.cloudId)
+      .in('rolle',['ueberwachung','fuehrung'])
+      .neq('user_id',currentSession.user.id)
+      .gte('zuletzt_aktiv',cutoff);
+    if(error){
+      console.warn('Betreuungsprüfung fehlgeschlagen:',error);
+      return {known:false,count:0,participants:[]};
+    }
+    return {known:true,count:(data||[]).length,participants:data||[]};
+  }
+
+  async function leaveEinsatz(){
+    if(!state) return;
+    let check={known:false,count:0,participants:[]};
+    if(state.einsatz?.cloudId){
+      check=await checkOtherCaretakers();
+      if(!check.known && navigator.onLine){
+        alert('Einsatz verlassen nicht möglich. Die Betreuung durch ein anderes Gerät konnte gerade nicht sicher geprüft werden.');
+        return;
+      }
+      if(check.known && check.count===0){
+        alert('Einsatz verlassen nicht möglich. Auf diesem Einsatz ist aktuell kein anderes Gerät als Atemschutzüberwachung oder Gruppenführer aktiv betreuend erkannt. Bitte übergib die Betreuung zuerst an ein anderes Gerät.');
+        return;
+      }
+    }
+    try{
+      const client=cloudClient();
+      if(client && currentSession && state.einsatz?.cloudId && navigator.onLine){
+        const {error}=await client.from('einsatz_teilnehmer')
+          .update({zuletzt_aktiv:new Date(0).toISOString()})
+          .eq('einsatz_id',state.einsatz.cloudId)
+          .eq('user_id',currentSession.user.id);
+        if(error) console.warn('Teilnehmer konnte nicht abgemeldet werden:',error);
+        if(cloudChannel){ try{ await client.removeChannel(cloudChannel); }catch(e){} cloudChannel=null; }
+      }
+    }catch(e){ console.warn('Einsatz verlassen – Cloud-Abmeldung fehlgeschlagen:',e); }
+    state=null;
+    await saveState(null);
+    render();
+  }
+
+function canEdit(){ const r=getRole(); return r==='ueberwachung' || r==='fuehrung' || r==='admin'; }
+function isReadOnlyRole(){ const r=getRole(); return r==='einsatzleiter' || r==='beobachter'; }
+  function needsEditPin(target){
+    return isReadOnlyRole() && (target==='ueberwachung' || target==='fuehrung');
+  }
+
+  function openEditRolePin(target, onSuccess){
+    const overlay=document.createElement('div');
+    overlay.className='overlay';
+    overlay.innerHTML=`<div class="modal" style="max-width:420px;">
+      <h2>🔒 Bearbeitungsrolle geschützt</h2>
+      <p style="color:var(--text-dim);">Der Wechsel zu <b>${esc(roleLabel(target))}</b> ist nur mit PIN möglich.</p>
+      <div class="field"><label>PIN</label><input id="role-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="••••"></div>
+      <div id="role-pin-msg" style="color:var(--red);font-size:13px;min-height:18px;"></div>
+      <div class="modal-actions"><button class="btn ghost" id="role-pin-cancel">Abbrechen</button><button class="btn primary" id="role-pin-ok">Freigeben</button></div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const input=overlay.querySelector('#role-pin');
+    const msg=overlay.querySelector('#role-pin-msg');
+    const close=()=>overlay.remove();
+    const verify=async()=>{
+      if(input.value===EDIT_ROLE_PIN){
+        close();
+        setRole(target);
+        await syncProfileRole();
+        onSuccess?.();
+      }else{
+        msg.textContent='Falsche PIN.';
+        input.value='';
+        input.focus();
+      }
+    };
+    overlay.querySelector('#role-pin-cancel').onclick=close;
+    overlay.querySelector('#role-pin-ok').onclick=verify;
+    input.onkeydown=e=>{if(e.key==='Enter') verify(); if(e.key==='Escape') close();};
+    setTimeout(()=>input.focus(),50);
+  }
+
+  async function selectRole(role){
+    if(needsEditPin(role)){
+      openEditRolePin(role, ()=>render());
+      return;
+    }
+    setRole(role);
+    await syncProfileRole();
+    render();
+  }
+  function isPermanentSession(session=currentSession){ return !!(session?.user?.email); }
+
+  function cloudClient(){
+    if(sb) return sb;
+    if(!window.supabase || !window.supabase.createClient) return null;
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:true }
+    });
+    return sb;
+  }
+
+  function makeEinsatzCode(){
+    const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let out='';
+    for(let i=0;i<6;i++) out += chars[Math.floor(Math.random()*chars.length)];
+    return out;
+  }
+
+  // Fingerabdruck (SHA-256) des Lizenzcodes: hängt Einsätze an die Feuerwehr, ohne den Code selbst abzulegen
+  async function licenseHash(){
+    try{
+      const lic=getLicense();
+      const code=String((lic&&(lic.code||lic.lizenz_code))||'').trim().toUpperCase();
+      if(!code || !(window.crypto && crypto.subtle)) return null;
+      const buf=await crypto.subtle.digest('SHA-256', new TextEncoder().encode('asue-hist:'+code));
+      return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+    }catch(e){ return null; }
+  }
+
+  async function cloudCreateEinsatz(s){
+    const client=cloudClient();
+    if(!client || !currentSession || !s?.einsatz) return null;
+    const code=s.einsatz.code || makeEinsatzCode();
+    s.einsatz.code=code;
+    const lizenz_hash=await licenseHash();
+    const row={
+      einsatz_code:code,
+      einsatzort:s.einsatz.ort || 'Ohne Angabe',
+      datum:new Date((s.einsatz.datum||new Date().toISOString().slice(0,10))+'T00:00:00').toISOString(),
+      einheitsfuehrer:s.einsatz.leiter || '',
+      atemschutzueberwachung:s.einsatz.leiter || '',
+      status:'aktiv',
+      erstellt_von:currentSession.user.id,
+      lizenz_hash,
+      zustand:s
+    };
+    const {data,error}=await client.from('einsaetze').insert(row).select('id,einsatz_code').single();
+    if(error) throw error;
+    s.einsatz.cloudId=data.id;
+    s.einsatz.code=data.einsatz_code;
+    const {error:memberError}=await client.from('einsatz_teilnehmer').insert({einsatz_id:data.id,user_id:currentSession.user.id,rolle:(getRole()==='fuehrung'?'fuehrung':getRole()==='einsatzleiter'?'fuehrung':getRole()==='beobachter'?'beobachter':'ueberwachung')});
+    if(memberError) throw memberError;
+    await startRealtime(s.einsatz.cloudId);
+    return data;
+  }
+
+  async function cloudSaveState(s){
+    const client=cloudClient();
+    if(!client || !currentSession || applyingCloudState || !s?.einsatz?.cloudId) return;
+    const {error}=await client.from('einsaetze').update({
+      einsatzort:s.einsatz.ort || '',
+      einheitsfuehrer:s.einsatz.leiter || '',
+      atemschutzueberwachung:s.einsatz.leiter || '',
+      status:'aktiv',
+      zustand:s,
+      updated_at:new Date().toISOString()
+    }).eq('id',s.einsatz.cloudId);
+    if(error) console.warn('Cloud-Synchronisierung fehlgeschlagen:',error);
+  }
+
+  async function cloudEndEinsatz(s){
+    const client=cloudClient();
+    if(!client || !currentSession || !s?.einsatz?.cloudId) return;
+    const {error}=await client.from('einsaetze').update({status:'beendet',beendet_am:new Date().toISOString(),zustand:s,updated_at:new Date().toISOString()}).eq('id',s.einsatz.cloudId);
+    if(error) console.warn('Cloud-Einsatzende fehlgeschlagen:',error);
+    if(cloudChannel){ try{ await client.removeChannel(cloudChannel); }catch(e){} cloudChannel=null; }
+  }
+
+  async function cloudJoinByCode(code){
+    const client=cloudClient();
+    if(!client || !currentSession) throw new Error('Nicht angemeldet.');
+    const {data,error}=await client.rpc('beitreten_einsatz',{p_code:String(code||'').trim().toUpperCase()});
+    if(error) throw error;
+    if(!data) throw new Error('Einsatz nicht gefunden oder bereits beendet.');
+    const s=data.zustand;
+    if(!s) throw new Error('Der Einsatz enthält noch keine synchronisierten Daten.');
+    const joinRole = getRole()==='fuehrung' ? 'fuehrung' : getRole()==='einsatzleiter' ? 'fuehrung' : getRole()==='beobachter' ? 'beobachter' : 'ueberwachung';
+    await client.from('einsatz_teilnehmer').update({rolle:joinRole,zuletzt_aktiv:new Date().toISOString()})
+      .eq('einsatz_id',data.id).eq('user_id',currentSession.user.id);
+    s.einsatz.cloudId=data.id;
+    s.einsatz.code=data.einsatz_code;
+    await saveState(s);
+    await startRealtime(data.id);
+    return s;
+  }
+
+  async function startRealtime(cloudId){
+    const client=cloudClient();
+    if(!client || !cloudId) return;
+    if(cloudChannel){ try{ await client.removeChannel(cloudChannel); }catch(e){} }
+    cloudChannel=client.channel('einsatz-'+cloudId)
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'einsaetze',filter:'id=eq.'+cloudId},payload=>{
+        if(applyingCloudState) return;
+
+        // Einsatz wurde auf einem anderen Gerät beendet:
+        // Alle verbundenen Geräte verlassen den gemeinsamen Einsatz
+        // ebenfalls und legen den letzten Stand lokal ins Archiv.
+        if(payload.new?.status === 'beendet'){
+          const remote=payload.new?.zustand;
+          if(remote){
+            remote.einsatz=remote.einsatz||{};
+            remote.einsatz.cloudId=cloudId;
+            remote.einsatz.code=payload.new.einsatz_code || remote.einsatz.code;
+            saveHistory(remote);
+          }
+          applyingCloudState=true;
+          state=null;
+          saveState(null).finally(async()=>{
+            applyingCloudState=false;
+            if(cloudChannel){ try{ await client.removeChannel(cloudChannel); }catch(e){} cloudChannel=null; }
+            render();
+            alert('Der Einsatz wurde auf einem anderen Gerät beendet.');
+          });
+          return;
+        }
+
+        const remote=payload.new?.zustand;
+        if(!remote) return;
+        applyingCloudState=true;
+        try{
+          remote.einsatz=remote.einsatz||{};
+          remote.einsatz.cloudId=cloudId;
+          remote.einsatz.code=payload.new.einsatz_code || remote.einsatz.code;
+          state=remote;
+          saveState(state).finally(()=>{ applyingCloudState=false; render(); });
+        }catch(e){ applyingCloudState=false; console.warn(e); }
+      })
+      .subscribe(status=>console.log('Realtime:',status));
+  }
+
+  async function refreshCloudStateIfAvailable(){
+    const client=cloudClient();
+    if(!client || !currentSession || !state?.einsatz?.cloudId) return;
+    const {data,error}=await client.from('einsaetze').select('id,einsatz_code,zustand,status').eq('id',state.einsatz.cloudId).single();
+    if(error || !data) return;
+
+    // Falls der Einsatz währenddessen auf einem anderen Gerät beendet wurde.
+    if(data.status === 'beendet'){
+      if(data.zustand){
+        const remote=data.zustand;
+        remote.einsatz=remote.einsatz||{};
+        remote.einsatz.cloudId=data.id;
+        remote.einsatz.code=data.einsatz_code || remote.einsatz.code;
+        saveHistory(remote);
+      }
+      applyingCloudState=true;
+      state=null;
+      await saveState(null);
+      applyingCloudState=false;
+      if(cloudChannel){ try{ await client.removeChannel(cloudChannel); }catch(e){} cloudChannel=null; }
+      return;
+    }
+
+    if(!data.zustand) return;
+    applyingCloudState=true;
+    state=data.zustand;
+    state.einsatz.cloudId=data.id;
+    state.einsatz.code=data.einsatz_code;
+    await saveState(state);
+    applyingCloudState=false;
+    await startRealtime(data.id);
+  }
+
+  function renderRolePicker(message){
+    const current=getRole();
+    const roles=[
+      ['ueberwachung','🫁','Atemschutzüberwachung'],
+      ['fuehrung','👨‍🚒','Gruppenführer'],
+      ['einsatzleiter','🚒','Einsatzleiter'],
+      ['beobachter','👀','Beobachter']
+    ];
+    app.innerHTML=`<div class="login-card">
+      <h2>Atemschutzüberwachung</h2>
+      <div class="login-note">Einmal auswählen – dieses Tablet merkt sich die Rolle. Im Einsatz ist danach keine E-Mail und kein Passwort nötig.</div>
+      <div class="role-grid">${roles.map(([id,icon,label])=>`<button class="role-btn ${current===id?'selected':''}" data-role="${id}">${icon}<br>${label}</button>`).join('')}</div>
+      <div id="role-msg" style="color:var(--red);font-size:13px;margin-top:12px;min-height:18px;">${esc(message||'')}</div>
+      <button class="btn ghost small" style="width:100%;margin-top:8px;" id="btn-admin-login">Administrator-Anmeldung</button>
+    </div>`;
+    app.querySelectorAll('.role-btn').forEach(btn=>btn.onclick=()=>selectRole(btn.dataset.role));
+    app.querySelector('#btn-admin-login').onclick=()=>renderAdminLogin();
+  }
+
+  function renderAdminLogin(message){
+    app.innerHTML=`<div class="login-card">
+      <h2>Administrator-Anmeldung</h2>
+      <div class="login-note">Nur für Einrichtung und Administration. Für den normalen Einsatz bitte eine Einsatzrolle auswählen.</div>
+      <div class="field"><label>E-Mail</label><input id="login-email" type="email" autocomplete="username" placeholder="E-Mail-Adresse"></div>
+      <div class="field"><label>Passwort</label><input id="login-password" type="password" autocomplete="current-password" placeholder="Passwort"></div>
+      <button class="btn primary" style="width:100%" id="login-btn">Anmelden</button>
+      <button class="btn ghost small" style="width:100%;margin-top:8px" id="back-role">Zurück zur Rollenauswahl</button>
+      <div id="login-msg" style="color:var(--red);font-size:13px;margin-top:12px;min-height:18px;">${esc(message||'')}</div>
+    </div>`;
+    const login=async()=>{
+      const email=app.querySelector('#login-email').value.trim();
+      const password=app.querySelector('#login-password').value;
+      if(!email || !password){ app.querySelector('#login-msg').textContent='Bitte E-Mail und Passwort eingeben.'; return; }
+      const btn=app.querySelector('#login-btn'); btn.disabled=true; btn.textContent='Anmelden …';
+      const client=cloudClient();
+      const {error}=await client.auth.signInWithPassword({email,password});
+      if(error){ btn.disabled=false; btn.textContent='Anmelden'; app.querySelector('#login-msg').textContent=error.message; return; }
+      setRole('admin');
+    };
+    app.querySelector('#login-btn').onclick=login;
+    app.querySelector('#login-password').onkeydown=e=>{if(e.key==='Enter')login();};
+    app.querySelector('#back-role').onclick=()=>renderRolePicker();
+  }
+
+  async function syncProfileRole(){
+    try{
+      const client=cloudClient();
+      if(!client || !currentSession) return;
+      await client.from('profiles').upsert({id:currentSession.user.id,display_name:roleLabel(),updated_at:new Date().toISOString()});
+    }catch(e){ console.warn('Profil konnte nicht synchronisiert werden:',e); }
+  }
+
+  async function handleAuthReady(session){
+    currentSession=session;
+    authReady=true;
+    if(!session){ renderRolePicker('Keine Sitzung vorhanden.'); return; }
+    if(isPermanentSession(session) && !getRole()) setRole('admin');
+    if(!getRole()) { renderRolePicker(); return; }
+    await syncProfileRole();
+    if(state?.einsatz?.cloudId){ await refreshCloudStateIfAvailable(); }
+    render();
+  }
+
+  // Offline-first: IndexedDB ist der primäre Speicher. localStorage bleibt als
+  // Fallback/Migrationsweg erhalten, damit bestehende Einsätze nicht verloren gehen.
+  const DB_NAME = 'AtemschutzUeberwachungDB';
+  const DB_VERSION = 1;
+  const DB_STORE = 'daten';
+  let dbPromise = null;
+
+  function openDB(){
+    if(dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject)=>{
+      if(!window.indexedDB){ reject(new Error('IndexedDB nicht verfügbar')); return; }
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = ()=>{
+        const db = req.result;
+        if(!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+      };
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error || new Error('IndexedDB konnte nicht geöffnet werden'));
+    });
+    return dbPromise;
+  }
+
+  async function idbGet(key){
+    const db = await openDB();
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(DB_STORE,'readonly');
+      const req = tx.objectStore(DB_STORE).get(key);
+      req.onsuccess = ()=>resolve(req.result ?? null);
+      req.onerror = ()=>reject(req.error);
+    });
+  }
+
+  async function idbSet(key,value){
+    const db = await openDB();
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(DB_STORE,'readwrite');
+      tx.objectStore(DB_STORE).put(value,key);
+      tx.oncomplete = ()=>resolve();
+      tx.onerror = ()=>reject(tx.error);
+    });
+  }
+
+  async function saveState(state){
+    const json = JSON.stringify(state);
+    try{ await idbSet(STORE_KEY, state); }catch(e){ console.warn('IndexedDB save failed', e); }
+    try{ localStorage.setItem(STORE_KEY, json); }catch(e){ console.warn('local save failed', e); }
+    try{ if(window.storage && window.storage.set) await window.storage.set(STORE_KEY, json, true); }catch(e){ console.warn('shared save failed', e); }
+    if(!applyingCloudState){ try{ await cloudSaveState(state); }catch(e){ console.warn('cloud save failed', e); } }
+  }
+
+  async function loadLocalState(){
+    try{
+      const dbState = await idbGet(STORE_KEY);
+      if(dbState !== null && dbState !== undefined) return dbState;
+    }catch(e){ console.warn('IndexedDB load failed', e); }
+    try{
+      const raw = localStorage.getItem(STORE_KEY);
+      if(raw){
+        const parsed = JSON.parse(raw);
+        try{ await idbSet(STORE_KEY, parsed); }catch(e){}
+        return parsed;
+      }
+    }catch(e){ return null; }
+    return null;
+  }
+
+  function saveHistory(einsatz){
+    if(!einsatz) return;
+    try{
+      const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+      const copy = JSON.parse(JSON.stringify(einsatz));
+      copy.gespeichertAm = Date.now();
+      const idx = history.findIndex(x=>x.einsatz && x.einsatz.id===copy.einsatz.id);
+      if(idx >= 0) history[idx] = copy; else history.unshift(copy);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0,100)));
+      // IndexedDB-Kopie im Hintergrund. Die UI muss darauf nicht warten.
+      idbSet(HISTORY_KEY, history.slice(0,100)).catch(e=>console.warn('History IndexedDB save failed',e));
+    }catch(e){ console.warn('history save failed', e); }
+  }
+
+  async function loadHistory(){
+    try{
+      const dbHistory = await idbGet(HISTORY_KEY);
+      if(Array.isArray(dbHistory) && dbHistory.length) return dbHistory;
+    }catch(e){ console.warn('History IndexedDB load failed', e); }
+    try{
+      const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+      if(Array.isArray(history) && history.length){
+        try{ await idbSet(HISTORY_KEY, history); }catch(e){}
+      }
+      return history;
+    }catch(e){ return []; }
+  }
+
+  async function loadState(){
+    const local = await loadLocalState();
+    if(local !== null && local !== undefined) return local;
+    try{
+      if(window.storage && window.storage.get){
+        const res = await window.storage.get(STORE_KEY, true);
+        return res ? JSON.parse(res.value) : null;
+      }
+    }catch(e){ console.warn('shared load failed:', e); }
+    return null;
+  }
+  let state = null;
+
+  function beep(freq, dur){
+    try{
+      if(!window.__audioCtx) window.__audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      const audioCtx = window.__audioCtx;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.frequency.value = freq;
+      osc.type = 'square';
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + dur/1000);
+    }catch(e){}
+  }
+  function alarmDouble(){ beep(880,180); setTimeout(()=>beep(880,180),260); }
+  function alarmTriple(){ beep(1046,150); setTimeout(()=>beep(1046,150),200); setTimeout(()=>beep(1046,150),400); }
+  function alarmDruck(){ beep(600,120); setTimeout(()=>beep(600,120),200); }
+
+  function fmtTime(d){ return d.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit', second:'2-digit'}); }
+  function fmtClock(seconds){
+    const s = Math.max(0, Math.floor(seconds));
+    const m = Math.floor(s/60);
+    const ss = s%60;
+    return String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');
+  }
+  function uid(){ return Math.random().toString(36).slice(2,10); }
+
+  function computeStatus(t){
+    if(t.status === 'vorbereitet') return 'prep';
+    if(t.status === 'beendet') return 'ended';
+    const elapsedSec = (Date.now() - t.start) / 1000;
+    const totalSec = t.erwarteteZeitMin * 60;
+    if(elapsedSec >= (2/3)*totalSec) return 'warn2';
+    if(elapsedSec >= (1/3)*totalSec) return 'warn1';
+    return 'ok';
+  }
+
+  function addLog(t, text){
+    const actor = actionRoleLabel();
+    const suffix = ` (${actor})`;
+    const clean = String(text||'');
+    t.log = Array.isArray(t.log) ? t.log : [];
+    t.log.push({zeit: Date.now(), text: clean.endsWith(suffix) ? clean : clean + suffix});
+  }
+
+  const app = document.getElementById('app');
+
+  async function render(){
+    if(!authReady){ return; }
+    if(!currentSession){ renderRolePicker(); return; }
+    if(!getRole()){ renderRolePicker(); return; }
+    if(!getLicense()){ renderLicenseSetup(); return; }
+    maybeCheckLicense(!state); updateLicenseBanner();
+    if(!state){ renderSetup(); applyLicenseGate(); return; }
+    renderDashboard();
+  }
+
+  function renderLocalQr(container, data, size=300){
+    container.innerHTML='';
+    try{
+      const qr = new LocalQRCode(-1, 2); // Fehlerkorrektur H
+      qr.addData(String(data||''));
+      qr.make();
+      const count = qr.getModuleCount();
+      const quiet = 4;
+      const total = count + quiet*2;
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      canvas.style.width = size+'px'; canvas.style.height = size+'px';
+      canvas.setAttribute('aria-label','Einsatz QR-Code');
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle='#fff'; ctx.fillRect(0,0,size,size);
+      const cell = size / total;
+      ctx.fillStyle='#000';
+      for(let r=0;r<count;r++){
+        for(let c=0;c<count;c++){
+          if(qr.isDark(r,c)){
+            const x=Math.round((c+quiet)*cell);
+            const y=Math.round((r+quiet)*cell);
+            const x2=Math.round((c+quiet+1)*cell);
+            const y2=Math.round((r+quiet+1)*cell);
+            ctx.fillRect(x,y,x2-x,y2-y);
+          }
+        }
+      }
+      container.appendChild(canvas);
+    }catch(err){
+      console.error('Lokaler QR-Code konnte nicht erzeugt werden:',err);
+      container.innerHTML='<div style="padding:30px;color:#b91c1c;">QR-Code konnte nicht erzeugt werden.</div>';
+    }
+  }
+
+  function openEinsatzQrModal(){
+    const code=state?.einsatz?.code;
+    if(!code) return;
+    const overlay=document.createElement('div');
+    overlay.className='overlay';
+    overlay.innerHTML=`<div class="modal" style="text-align:center;max-width:520px;">
+      <h2>Einsatz beitreten</h2>
+      <p style="color:var(--text-dim);">Auf dem anderen Tablet einfach <b>QR-Code scannen</b> auswählen.</p>
+      <div id="einsatz-qr-local" style="background:#fff;border-radius:14px;padding:12px;display:inline-block;margin:10px 0;"></div>
+      <div style="font-size:30px;font-weight:900;letter-spacing:6px;margin:4px 0 12px;">${esc(code)}</div>
+      <div style="color:var(--text-dim);font-size:12px;">Einsatz-Code</div>
+      <div style="color:var(--text-dim);font-size:11px;margin-top:8px;">QR-Code wird vollständig offline auf diesem Gerät erzeugt.</div>
+      <div class="modal-actions"><button class="btn primary" id="qr-close">Schließen</button></div>
+    </div>`;
+    document.body.appendChild(overlay);
+    renderLocalQr(overlay.querySelector('#einsatz-qr-local'),'ASUE-EINSATZ:'+code,300);
+    overlay.querySelector('#qr-close').onclick=()=>overlay.remove();
+  }
+
+  async function syncOfflineEinsatzIfPossible(){
+    if(!state?.einsatz || state.einsatz.cloudId || !currentSession) return false;
+    if(!navigator.onLine) return false;
+    try{
+      const created=await cloudCreateEinsatz(state);
+      if(created){
+        await saveState(state);
+        if(state?.einsatz?.cloudId){ render(); return true; }
+      }
+    }catch(e){ console.warn('Offline-Einsatz konnte noch nicht synchronisiert werden:',e); }
+    return false;
+  }
+
+  async function refreshCloudEinsatzOnReconnect(){
+    if(!state?.einsatz?.cloudId || !currentSession || !navigator.onLine) return false;
+    const client=cloudClient();
+    if(!client) return false;
+    try{
+      // Beim Wiederverbinden immer den aktuellen Cloud-Stand holen.
+      // Dadurch werden Änderungen, die während der Offline-Phase auf
+      // einem anderen Gerät entstanden sind, sofort übernommen.
+      const {data,error}=await client.from('einsaetze')
+        .select('id,einsatz_code,status,zustand')
+        .eq('id',state.einsatz.cloudId)
+        .single();
+      if(error) throw error;
+      if(!data) return false;
+
+      if(data.status==='beendet'){
+        const remote=data.zustand;
+        if(remote){
+          remote.einsatz=remote.einsatz||{};
+          remote.einsatz.cloudId=data.id;
+          remote.einsatz.code=data.einsatz_code || remote.einsatz.code;
+          saveHistory(remote);
+        }
+        state=null;
+        await saveState(null);
+        if(cloudChannel){ try{ await client.removeChannel(cloudChannel); }catch(e){} cloudChannel=null; }
+        render();
+        alert('Der Einsatz wurde während der Offline-Phase auf einem anderen Gerät beendet.');
+        return true;
+      }
+
+      const remote=data.zustand;
+      if(remote){
+        remote.einsatz=remote.einsatz||{};
+        remote.einsatz.cloudId=data.id;
+        remote.einsatz.code=data.einsatz_code || remote.einsatz.code;
+        applyingCloudState=true;
+        try{
+          state=remote;
+          await saveState(state);
+        }finally{
+          applyingCloudState=false;
+        }
+        render();
+      }
+
+      // Realtime-Kanal nach einer Offline-Phase sicher neu aufbauen.
+      await startRealtime(data.id);
+      return true;
+    }catch(e){
+      console.warn('Cloud-Stand konnte nach Wiederverbindung noch nicht geladen werden:',e);
+      return false;
+    }
+  }
+
+  window.addEventListener('online', ()=>setTimeout(async()=>{
+    if(state?.einsatz?.cloudId){
+      await refreshCloudEinsatzOnReconnect();
+    }else{
+      await syncOfflineEinsatzIfPossible();
+    }
+  },500));
+
+  function renderSetup(){
+    app.innerHTML = `
+      <div class="setup-card">
+        <h2>Neuer Einsatz</h2>
+        <div class="field"><label>Einsatzort</label><input id="f-ort" placeholder="z. B. Musterstraße 12, Musterstadt"></div>
+        <div class="field"><label>Datum</label><input id="f-datum" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+        <div class="field"><label>Einheitsführer / Atemschutzüberwachung</label><input id="f-leiter" placeholder="Name"></div>
+        
+        <button class="btn primary" style="width:100%" id="btn-start-einsatz">Einsatz starten</button>
+        <div style="text-align:center;color:var(--text-dim);font-size:12px;margin:14px 0 8px;">oder</div>
+        <div class="field"><label>Bestehendem Einsatz beitreten</label><input id="join-code" class="code-input" maxlength="6" placeholder="ABC123"></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" style="flex:1" id="btn-join-einsatz">Einsatz beitreten</button>
+          <button class="btn primary" style="flex:1" id="btn-scan-einsatz-qr">📷 QR-Code scannen</button>
+        </div>
+        <button class="btn ghost small" style="width:100%;margin-top:10px;" id="btn-setup-history">Gespeicherte Einsätze</button>
+        <div id="setup-msg" style="color:var(--red);font-size:13px;margin-top:12px;min-height:18px;"></div>
+        <div style="margin-top:16px;text-align:center;color:var(--text-dim);font-size:11px;">Rolle auf diesem Tablet: ${esc(roleLabel())}</div>
+      </div>`;
+    document.getElementById('btn-setup-history').onclick = openHistoryModal;
+    document.getElementById('btn-start-einsatz').onclick = async ()=>{
+      const btn=document.getElementById('btn-start-einsatz');
+      const msg=document.getElementById('setup-msg');
+      const ort = document.getElementById('f-ort').value.trim() || 'Ohne Angabe';
+      const datum = document.getElementById('f-datum').value;
+      const leiter = document.getElementById('f-leiter').value.trim() || 'Ohne Angabe';
+      state = { einsatz:{ort, datum, leiter, id: uid(), code: makeEinsatzCode()}, trupps:[] };
+      btn.disabled=true; btn.textContent='Einsatz wird angelegt …';
+
+      // OFFLINE-FIRST: zuerst immer lokal speichern. Die Cloud ist Zusatzfunktion
+      // und darf einen Einsatz bei fehlender Verbindung niemals blockieren.
+      try{ await saveState(state); }catch(e){ console.warn('Lokaler Einsatz konnte nicht gespeichert werden:',e); }
+
+      let cloudOk=false;
+      try{
+        const created=await cloudCreateEinsatz(state);
+        cloudOk=!!created;
+        if(cloudOk) await saveState(state);
+      }catch(e){ console.warn('Cloud-Einsatz konnte offline/nicht angelegt werden:',e); }
+
+      btn.disabled=false; btn.textContent='Einsatz starten';
+      if(cloudOk){
+        msg.style.color='var(--green)';
+        msg.textContent='Einsatz online angelegt und synchronisiert.';
+      }else{
+        msg.style.color='var(--yellow)';
+        msg.textContent='Offline: Einsatz lokal gespeichert. Synchronisierung erfolgt automatisch, sobald wieder eine Verbindung besteht.';
+      }
+      render();
+    };
+    document.getElementById('btn-join-einsatz').onclick = async ()=>{
+      const btn=document.getElementById('btn-join-einsatz');
+      const msg=document.getElementById('setup-msg');
+      const code=document.getElementById('join-code').value.trim().toUpperCase();
+      if(code.length!==6){ msg.textContent='Bitte den 6-stelligen Einsatz-Code eingeben.'; return; }
+      btn.disabled=true; btn.textContent='Einsatz wird geladen …';
+      try{ state=await cloudJoinByCode(code); render(); }
+      catch(e){ console.error(e); btn.disabled=false; btn.textContent='Einsatz beitreten'; msg.textContent=e.message||'Einsatz konnte nicht geladen werden.'; }
+    };
+    document.getElementById('btn-scan-einsatz-qr').onclick=()=>openScanModal(async raw=>{
+      const value=String(raw||'').trim();
+      const code=value.toUpperCase().startsWith('ASUE-EINSATZ:') ? value.split(':').slice(1).join(':').trim().toUpperCase() : value.toUpperCase();
+      document.getElementById('join-code').value=code;
+      document.getElementById('btn-join-einsatz').click();
+    });
+  }
+
+  function captureLogScrollPositions(){
+    const positions = {};
+    document.querySelectorAll('.trupp .log-mini').forEach(el=>{
+      const card = el.closest('.trupp');
+      if(card && card.id) positions[card.id] = el.scrollTop;
+    });
+    return positions;
+  }
+
+  function restoreLogScrollPositions(positions){
+    if(!positions) return;
+    requestAnimationFrame(()=>{
+      Object.entries(positions).forEach(([id, top])=>{
+        const el = document.querySelector('#'+CSS.escape(id)+' .log-mini');
+        if(el) el.scrollTop = top;
+      });
+    });
+  }
+
+  function renderDashboard(){
+    const logScrollPositions = captureLogScrollPositions();
+    const prepared = state.trupps.filter(t=>t.status==='vorbereitet');
+    const active = state.trupps.filter(t=>t.status==='aktiv');
+    const ended = state.trupps.filter(t=>t.status==='beendet');
+
+    app.innerHTML = `
+      <header class="top">
+        <div class="brand"><div><h1>Atemschutzüberwachung</h1><div class="creator-inline">Created by Henning Ludwig <span class="version-inline">• Version 1.1.8</span></div></div><span class="sub">Live</span><span class="cloud-badge">● Mehrgeräte-Cloud</span></div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn small" id="btn-role">${esc(roleLabel())}</button><button class="btn small" id="btn-history">Gespeicherte Einsätze</button><button class="btn small" id="btn-einsatz-qr">QR-Code</button>
+          <button class="btn small" id="btn-nachweis">Nachweis / Export</button>
+          <button class="btn small" id="btn-einsatz-verlassen">Einsatz verlassen</button>
+          <button class="btn small danger" id="btn-einsatz-beenden">Einsatz beenden</button>
+        </div>
+      </header>
+      <div class="einsatz-meta">
+        <span>Einsatzort: <b>${esc(state.einsatz.ort)}</b></span>
+        <span>Datum: <b>${esc(state.einsatz.datum)}</b></span>
+        <span>Überwachung: <b>${esc(state.einsatz.leiter)}</b></span><span>Einsatz-Code: <b style="letter-spacing:2px;">${esc(state.einsatz.code||'—')}</b></span>
+      </div>
+
+      <div style="margin:16px 0;">
+        ${canEdit()?'<button class="btn primary" id="btn-add-trupp">+ Trupp vorbereiten</button>':'<div class="login-note">Nur Atemschutzüberwachung und Gruppenführer können den Einsatz bearbeiten.</div>'}
+      </div>
+
+      ${prepared.length ? '<h2 class="section-title">Vorbereitet — noch nicht gestartet</h2><div class="grid" id="grid-prep"></div>' : ''}
+      <h2 class="section-title">Aktiv unter Atemschutz</h2>
+      <div class="grid" id="grid-active"></div>
+      ${ended.length ? '<h2 class="section-title">Beendet</h2><div class="grid" id="grid-ended"></div>' : ''}
+    `;
+    const addBtn=document.getElementById('btn-add-trupp'); if(addBtn) addBtn.onclick = openAddTruppModal;
+    document.getElementById('btn-einsatz-qr').onclick = openEinsatzQrModal;
+    document.getElementById('btn-role').onclick = ()=>renderRolePicker();
+    const btnEinsatzVerlassen = document.getElementById('btn-einsatz-verlassen');
+    btnEinsatzVerlassen.onclick = ()=>leaveEinsatz();
+    const btnEinsatzBeenden = document.getElementById('btn-einsatz-beenden');
+    btnEinsatzBeenden.disabled = active.length > 0 || !canEdit();
+    btnEinsatzBeenden.title = !canEdit() ? 'Nur Atemschutzüberwachung und Gruppenführer dürfen den Einsatz beenden.' : (active.length > 0 ? 'Erst alle aktiven Trupps beenden.' : 'Einsatz beenden');
+    btnEinsatzBeenden.onclick = ()=> beendeEinsatz();
+    document.getElementById('btn-nachweis').onclick = openNachweisModal;
+    document.getElementById('btn-history').onclick = openHistoryModal;
+
+    if(prepared.length){
+      const g = document.getElementById('grid-prep');
+      g.innerHTML = prepared.map(truppCard).join('');
+      bindCard(prepared);
+    }
+    const gA = document.getElementById('grid-active');
+    if(active.length===0){
+      gA.innerHTML = `<div class="empty" style="grid-column:1/-1">Kein Trupp aktiv unter Atemschutz.</div>`;
+    } else {
+      gA.innerHTML = active.map(truppCard).join('');
+      bindCard(active);
+    }
+    if(ended.length){
+      const g = document.getElementById('grid-ended');
+      g.innerHTML = ended.map(truppCard).join('');
+      bindCard(ended);
+    }
+    restoreLogScrollPositions(logScrollPositions);
+  }
+
+  function bindCard(list){
+    list.forEach(t=>{
+      const scope = document.getElementById('card-'+t.id);
+      if(!scope) return;
+      const s = scope.querySelector('.act-start'); if(s) s.onclick = ()=>attemptStart(t.id);
+      const d = scope.querySelector('.act-druck'); if(d) d.onclick = ()=>openDruckModal(t.id);
+      const z = scope.querySelector('.act-ziel'); if(z) z.onclick = ()=>openDruckModal(t.id, 'ziel');
+      const r = scope.querySelector('.act-rueckzug'); if(r) r.onclick = ()=>openDruckModal(t.id, 'rueckzug');
+      const e = scope.querySelector('.act-ende'); if(e) e.onclick = ()=>openDruckModal(t.id, 'ende');
+      const ev = scope.querySelector('.act-event'); if(ev) ev.onclick = ()=>openEreignisModal(t.id);
+      const del = scope.querySelector('.act-del'); if(del) del.onclick = ()=>deleteTrupp(t.id);
+      const edit = scope.querySelector('.act-edit'); if(edit) edit.onclick = ()=>openEditTruppModal(t.id);
+      const ack = scope.querySelector('.act-sofort-ack'); if(ack) ack.onclick = ()=>ackSofort(t.id);
+    });
+  }
+
+  function lastDruckLine(t){
+    if(!t.druckwerte || t.druckwerte.length===0) return null;
+    return t.druckwerte[t.druckwerte.length-1];
+  }
+
+  function truppCard(t){
+    const status = computeStatus(t);
+    const badgeMap = {prep:'Vorbereitet', ok:'Normal', warn1:'1/3 erreicht', warn2:'2/3 – Rückzug prüfen!', ended:'Beendet'};
+    const membersHtml = t.mitglieder.map(m=>`<div><b>${esc(m.name)||'—'}</b>${m.startdruck!=null?(' · Start: '+esc(m.startdruck)+' bar'):''}</div>`).join('');
+    const logHtml = (t.log || []).map(l=>`<div>${fmtTime(new Date(l.zeit))} — ${esc(l.text)}</div>`).join('');
+
+    let timerHtml = '';
+    let druckSummary = '';
+    let actions = '';
+
+    if(t.status === 'vorbereitet'){
+      const startReady = t.mitglieder.length>0 && t.mitglieder.every(m=>String(m.name||'').trim()!=='');
+      timerHtml = `<div class="timer" style="color:var(--text-dim); font-size:20px;">Noch nicht gestartet</div>`;
+      actions = `<button class="btn small primary act-start" ${canEdit()?'':'disabled'} ${startReady?'':'disabled'} title="${startReady?'Trupp starten':'Start erst möglich, wenn für alle Mitglieder ein Name eingetragen ist.'}">Start (Luft anschließen)</button>
+                  ${canEdit()?'<button class="btn small ghost act-edit">Bearbeiten</button><button class="btn small ghost act-del">Löschen</button>':''}`;
+    } else {
+      const elapsedSec = t.endzeit ? (t.endzeit - t.start)/1000 : (Date.now() - t.start)/1000;
+      const totalSec = t.erwarteteZeitMin*60;
+      const remaining = totalSec - elapsedSec;
+      timerHtml = `<div class="timer">${t.endzeit ? fmtClock(elapsedSec) : (remaining>=0? '-'+fmtClock(remaining) : '+'+fmtClock(Math.abs(remaining)))}</div>
+        <div class="timer-sub">Angeschlossen: ${fmtTime(new Date(t.start))} · Soll ${t.erwarteteZeitMin} min ${t.endzeit? '· Beendet '+fmtTime(new Date(t.endzeit)):''}</div>`;
+
+      const last = lastDruckLine(t);
+      const minsSince = t.status==='aktiv' ? Math.floor((Date.now()-(t.lastDruckCheck||t.start))/60000) : null;
+      if(t.status === 'aktiv'){
+        druckSummary = `<div class="druck-summary">
+          <div><span>Letzte Druckabfrage</span><b>${last ? fmtTime(new Date(last.zeit)) : 'noch keine'}</b></div>
+          <div><span>Seit letzter Abfrage</span><b class="${minsSince>=DRUCK_INTERVAL_MIN?'low':''}">${minsSince} min</b></div>
+          ${last ? last.werte.map(w=>`<div><span>${esc(w.name)}</span><b>${esc(w.druck)} bar</b></div>`).join('') : ''}
+        </div>`;
+        if(Number.isFinite(Number(t.rueckzugSchwelle))){
+          druckSummary += `<div class="druck-summary" style="margin-top:-4px;">
+            <div><span>Rückzugsdruck Trupp</span><b>${esc(t.rueckzugSchwelle)} bar</b></div>
+          </div>`;
+        }
+      }
+
+      if(t.status === 'aktiv'){
+        actions = canEdit() ? `
+          <button class="btn small ghost act-edit">Bearbeiten</button>
+          <button class="btn small primary act-event">Ereignis dokumentieren</button>
+          <button class="btn small violet act-druck">Druck erfassen</button>
+          ${!t.zielzeit ? '<button class="btn small good act-ziel">Einsatzziel erreicht</button>':''}
+          ${!t.rueckzugzeit ? '<button class="btn small warnbtn act-rueckzug">Rückzug begonnen</button>':''}
+          <button class="btn small danger act-ende">Einsatzende</button>` : '<div style="color:var(--text-dim);font-size:12px;padding:6px 0;">Nur Lesemodus</div>';
+      } else {
+        actions = canEdit() ? `<button class="btn small ghost act-del">Löschen</button>` : '<div style="color:var(--text-dim);font-size:12px;">Nur Lesemodus</div>';
+      }
+    }
+
+    const faelligClass = (t.status==='aktiv' && t.druckReminderActive) ? 'druck-faellig' : '';
+    const faelligBadge = (t.status==='aktiv' && t.druckReminderActive) ? '<span class="badge druck">⚠ DRUCKABFRAGE JETZT</span>' : '';
+    const sofortClass = (t.status==='aktiv' && t.rueckzugSofort) ? 'sofort' : '';
+    const sofortBanner = (t.status==='aktiv' && t.rueckzugSofort) ? `<div class="sofort-banner">⚠ RÜCKZUG SOFORT — Druck unter Sicherheitsreserve${canEdit()?'<button class="btn small act-sofort-ack">Bestätigen</button>':''}</div>` : '';
+
+    return `
+      <div class="trupp status-${status} ${faelligClass} ${sofortClass}" id="card-${t.id}">
+        <div class="trupp-head">
+          <div><h3>${esc(t.name)}</h3>${t.funkruf?`<div style="color:var(--text-dim);font-size:13px;">Funkruf: ${esc(t.funkruf)}</div>`:''}${t.auftrag?`<div style="color:var(--blue);font-size:13px;font-weight:700;margin-top:3px;">Auftrag: ${esc(t.auftrag)}</div>`:''}</div>
+          <div style="display:flex; gap:6px;">${faelligBadge}<span class="badge ${status}">${badgeMap[status]}</span></div>
+        </div>
+        ${sofortBanner}
+        ${timerHtml}
+        <div class="members">${membersHtml}</div>
+        ${druckSummary}
+        <div class="trupp-actions">${actions}</div>
+        <div class="log-mini">${logHtml || '<i>Kein Ereignis protokolliert</i>'}</div>
+      </div>`;
+  }
+
+  function esc(s){
+    return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // Rückzugsdruck für den gesamten Trupp:
+  // Am Einsatzziel wird nur der niedrigste Druck des Trupps erfasst.
+  // Für den Rückweg werden 2x des bisherigen Verbrauchs benötigt.
+  // Maßgeblich ist immer die ungünstigste (höchste) daraus resultierende Schwelle.
+  function computeRueckzugSchwelle(t, niedrigsterZieldruck){
+    const ziel = Number(niedrigsterZieldruck);
+    if(!Number.isFinite(ziel)) return null;
+
+    let schwelle = 0;
+    t.mitglieder.forEach(m=>{
+      const start = Number(m.startdruck);
+      if(Number.isFinite(start)){
+        const verbrauchHinweg = start - ziel;
+        const benoetigteReserveRueckweg = verbrauchHinweg * 2;
+        schwelle = Math.max(schwelle, Math.round(benoetigteReserveRueckweg));
+      }
+    });
+    return Math.max(0, schwelle);
+  }
+
+  function checkSofort(t, werte){
+    if(!t.rueckzugSchwelle || !werte || !werte.length) return;
+    const druck = Number(werte[0].druck);
+    if(!Number.isFinite(druck)) return;
+    const schwelle = Number(t.rueckzugSchwelle);
+    if(Number.isFinite(schwelle) && druck <= schwelle){
+      t.rueckzugSofort = true;
+      addLog(t, '⚠ WARNUNG: Niedrigster Truppdruck (' + druck + ' bar) erreicht/unterschritten — Rückzugsreserve ' + schwelle + ' bar. Rückzug sofort einleiten!');
+      alarmTriple(); setTimeout(alarmTriple, 700);
+    }
+  }
+
+  async function ackSofort(id){
+    const t = state.trupps.find(x=>x.id===id); if(!t) return;
+    t.rueckzugSofort = false;
+    addLog(t, 'Rückzugswarnung bestätigt');
+    await saveState(state); render();
+  }
+
+  // Einsatz kann nur beendet werden, wenn keine Trupps mehr aktiv sind.
+  async function beendeEinsatz(){
+    if(!state) return;
+    const aktive = state.trupps.filter(t=>t.status==='aktiv');
+    if(aktive.length){
+      alert('Der Einsatz kann erst beendet werden, wenn alle Trupps beendet bzw. abgezogen sind.');
+      return;
+    }
+    if(!confirm('Aktuellen Einsatz beenden?')) return;
+    saveHistory(state);
+    // Detailbericht automatisch erzeugen und lokal speichern, bevor der aktuelle
+    // Einsatz aus dem aktiven Zustand entfernt wird.
+    await exportPDF(state, {silent:true});
+    await cloudEndEinsatz(state);
+    state = null;
+    await saveState(null);
+    render();
+  }
+
+  async function markEnde(id){
+    const t = state.trupps.find(x=>x.id===id); if(!t) return;
+    openDruckModal(id, 'ende');
+  }
+  async function deleteTrupp(id){
+    if(!confirm('Trupp aus der Liste entfernen?')) return;
+    state.trupps = state.trupps.filter(x=>x.id!==id);
+    await saveState(state); render();
+  }
+
+  // ---------- Trupp vorbereiten (kein Start) ----------
+  function openAddTruppModal(){
+    const tmp = { id: uid(), name:'', funkruf:'', auftrag:'', erwarteteZeitMin:30, mitglieder:[{name:'',startdruck:null},{name:'',startdruck:null}] };
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>Trupp vorbereiten</h2>
+        <div class="field"><label>Truppbezeichnung</label><input id="m-name" placeholder="z. B. Trupp 1 / Angriffstrupp"></div>
+        <div class="field"><label>Funkruf des Trupps <span style="color:var(--text-dim);font-weight:normal;">(optional)</span></label><input id="m-funkruf" placeholder="z. B. Angriffstrupp 1"></div>
+        <div class="field"><label>Auftrag</label><div id="m-auftrag-buttons" class="quick-buttons">${['Linke Hand','Rechte Hand','Keller','1OG','2.OG','3.OG','Brandbekämpfung','Menschenrettung'].map(x=>`<button type="button" class="quick-btn" data-auftrag="${esc(x)}">${esc(x)}</button>`).join('')}</div><input id="m-auftrag" placeholder="Freitext / eigener Auftrag" style="margin-top:8px;"></div>
+        <div class="field"><label>Voraussichtliche Einsatzzeit (Minuten)</label><input id="m-zeit" type="number" min="5" step="5" value="30"></div>
+        <div id="members-wrap"></div>
+        <button class="btn small ghost" id="m-add-member">+ Weiteres Mitglied</button>
+        <div class="modal-actions">
+          <button class="btn ghost" id="m-cancel">Abbrechen</button>
+          <button class="btn primary" id="m-save">Trupp anlegen (noch nicht starten)</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    function renderMembers(){
+      const wrap = overlay.querySelector('#members-wrap');
+      wrap.innerHTML = tmp.mitglieder.map((m,i)=>`
+        <div class="member-row" data-i="${i}">
+          <div class="field"><label>Name</label><input class="mm-name" value="${esc(m.name)}" placeholder="Nachname, Vorname"></div>
+          <div class="field" style="max-width:110px;"><label>Startdruck</label><input class="mm-druck" type="number" min="0" max="400" value="${m.startdruck!=null?m.startdruck:''}" placeholder="optional"></div>
+          <button class="btn small" style="align-self:flex-end;" data-scan="${i}">Scan</button>
+        </div>`).join('');
+      wrap.querySelectorAll('.member-row').forEach(row=>{
+        const i = +row.dataset.i;
+        row.querySelector('.mm-name').oninput = e=> tmp.mitglieder[i].name = e.target.value;
+        row.querySelector('.mm-druck').oninput = e=> tmp.mitglieder[i].startdruck = e.target.value ? +e.target.value : null;
+        row.querySelector('[data-scan]').onclick = ()=> openScanModal((data)=>{
+          applyScanToMember(tmp, i, data);
+          renderMembers();
+        });
+      });
+    }
+    renderMembers();
+
+    overlay.querySelector('#m-add-member').onclick = ()=>{ tmp.mitglieder.push({name:'',startdruck:null}); renderMembers(); };
+    overlay.querySelector('#m-name').oninput = e=> tmp.name = e.target.value;
+    overlay.querySelector('#m-funkruf').oninput = e=> tmp.funkruf = e.target.value;
+    overlay.querySelector('#m-auftrag').oninput = e=> { tmp.auftrag = e.target.value; overlay.querySelectorAll('[data-auftrag]').forEach(b=>b.classList.toggle('selected', b.dataset.auftrag===tmp.auftrag)); };
+    overlay.querySelectorAll('[data-auftrag]').forEach(b=>b.onclick=()=>{ tmp.auftrag=b.dataset.auftrag; overlay.querySelector('#m-auftrag').value=tmp.auftrag; overlay.querySelectorAll('[data-auftrag]').forEach(x=>x.classList.toggle('selected',x===b)); });
+    overlay.querySelector('#m-zeit').oninput = e=> tmp.erwarteteZeitMin = +e.target.value || 30;
+    overlay.querySelector('#m-cancel').onclick = ()=> overlay.remove();
+    overlay.querySelector('#m-save').onclick = async ()=>{
+      if(!tmp.name.trim()){ alert('Bitte Truppbezeichnung eingeben.'); return; }
+      const trupp = {
+        id: tmp.id,
+        name: tmp.name.trim(),
+        funkruf: tmp.funkruf.trim(),
+        auftrag: tmp.auftrag.trim(),
+        erwarteteZeitMin: tmp.erwarteteZeitMin,
+        mitglieder: tmp.mitglieder.filter(m=>m.name.trim()),
+        status: 'vorbereitet',
+        start: null,
+        zielzeit: null,
+        rueckzugzeit: null,
+        endzeit: null,
+        druckwerte: [],
+        lastDruckCheck: null,
+        druckReminderActive: false,
+        log: [{zeit: Date.now(), text:'Trupp vorbereitet'}]
+      };
+      state.trupps.push(trupp);
+      await saveState(state);
+      overlay.remove();
+      render();
+    };
+  }
+
+  // ---------- Trupp bearbeiten ----------
+  function openEditTruppModal(id){
+    const t = state.trupps.find(x=>x.id===id); if(!t) return;
+    if(t.status==='beendet') return;
+    const tmp = {
+      name:t.name || '',
+      funkruf:t.funkruf || '',
+      auftrag:t.auftrag || '',
+      erwarteteZeitMin:t.erwarteteZeitMin || 30,
+      mitglieder:t.mitglieder.map(m=>({name:m.name || '', startdruck:m.startdruck!=null?m.startdruck:null}))
+    };
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>Trupp bearbeiten</h2>
+        <div class="field"><label>Truppbezeichnung</label><input id="e-name" value="${esc(tmp.name)}"></div>
+        <div class="field"><label>Funkruf des Trupps <span style="color:var(--text-dim);font-weight:normal;">(optional)</span></label><input id="e-funkruf" value="${esc(tmp.funkruf)}"></div>
+        <div class="field"><label>Auftrag</label><div id="e-auftrag-buttons" class="quick-buttons">${['Linke Hand','Rechte Hand','Keller','1OG','2.OG','3.OG','Brandbekämpfung','Menschenrettung'].map(x=>`<button type="button" class="quick-btn ${tmp.auftrag===x?'selected':''}" data-auftrag="${esc(x)}">${esc(x)}</button>`).join('')}</div><input id="e-auftrag" value="${esc(tmp.auftrag)}" placeholder="Freitext / eigener Auftrag" style="margin-top:8px;"></div>
+        <div class="field"><label>Voraussichtliche Einsatzzeit (Minuten)</label><input id="e-zeit" type="number" min="5" step="5" value="${tmp.erwarteteZeitMin}"></div>
+        <div id="edit-members-wrap"></div>
+        <button class="btn small ghost" id="e-add-member">+ Weiteres Mitglied</button>
+        <div class="modal-actions">
+          <button class="btn ghost" id="e-cancel">Abbrechen</button>
+          <button class="btn primary" id="e-save">Änderungen speichern</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    function renderEditMembers(){
+      const wrap=overlay.querySelector('#edit-members-wrap');
+      wrap.innerHTML=tmp.mitglieder.map((m,i)=>`
+        <div class="member-row" data-i="${i}">
+          <div class="field"><label>Name</label><input class="em-name" value="${esc(m.name)}" placeholder="Nachname, Vorname"></div>
+          <div class="field" style="max-width:110px;"><label>Startdruck</label><input class="em-druck" type="number" min="0" max="400" value="${m.startdruck!=null?m.startdruck:''}" placeholder="bar" ${t.status==='aktiv'?'disabled':''}></div>
+          <button class="btn small" style="align-self:flex-end;" data-scan="${i}">Scan</button>
+        </div>`).join('');
+      wrap.querySelectorAll('.member-row').forEach(row=>{
+        const i=+row.dataset.i;
+        row.querySelector('.em-name').oninput=e=>tmp.mitglieder[i].name=e.target.value;
+        row.querySelector('.em-druck').oninput=e=>tmp.mitglieder[i].startdruck=e.target.value?+e.target.value:null;
+        row.querySelector('[data-scan]').onclick=()=>openScanModal(data=>{ applyScanToMember(tmp,i,data); renderEditMembers(); });
+      });
+    }
+    renderEditMembers();
+    overlay.querySelector('#e-name').oninput=e=>tmp.name=e.target.value;
+    overlay.querySelector('#e-funkruf').oninput=e=>tmp.funkruf=e.target.value;
+    overlay.querySelector('#e-auftrag').oninput=e=>{tmp.auftrag=e.target.value;overlay.querySelectorAll('[data-auftrag]').forEach(b=>b.classList.toggle('selected',b.dataset.auftrag===tmp.auftrag));};
+    overlay.querySelectorAll('[data-auftrag]').forEach(b=>b.onclick=()=>{tmp.auftrag=b.dataset.auftrag;overlay.querySelector('#e-auftrag').value=tmp.auftrag;overlay.querySelectorAll('[data-auftrag]').forEach(x=>x.classList.toggle('selected',x===b));});
+    overlay.querySelector('#e-zeit').oninput=e=>tmp.erwarteteZeitMin=+e.target.value||30;
+    overlay.querySelector('#e-add-member').onclick=()=>{tmp.mitglieder.push({name:'',startdruck:null});renderEditMembers();};
+    overlay.querySelector('#e-cancel').onclick=()=>overlay.remove();
+    overlay.querySelector('#e-save').onclick=async()=>{
+      if(!tmp.name.trim()){alert('Bitte Truppbezeichnung eingeben.');return;}
+      const members=tmp.mitglieder.filter(m=>m.name.trim());
+      if(!members.length){alert('Bitte mindestens ein Mitglied eintragen.');return;}
+      const oldNames=t.mitglieder.map(m=>m.name);
+      t.name=tmp.name.trim();
+      t.funkruf=tmp.funkruf.trim();
+      t.auftrag=tmp.auftrag.trim();
+      t.erwarteteZeitMin=tmp.erwarteteZeitMin;
+      // Keep pressure history and calculated thresholds consistent when member names change.
+      const renameMap={};
+      oldNames.forEach((oldName,i)=>{ const newName=members[i]?.name?.trim(); if(newName && newName!==oldName) renameMap[oldName]=newName; });
+      t.mitglieder=members.map(m=>({name:m.name.trim(),startdruck:m.startdruck}));
+      if(t.druckwerte) t.druckwerte.forEach(line=>line.werte?.forEach(w=>{if(renameMap[w.name])w.name=renameMap[w.name];}));
+      // Die Rückzugsschwelle gilt jetzt truppweit und hängt nicht mehr am Mitgliedsnamen.
+      // Alte gespeicherte Schwellen bleiben unberührt, damit historische Einsätze lesbar bleiben.
+      if(t.rueckzugSchwelle!=null) t.rueckzugSchwelle = Number(t.rueckzugSchwelle);
+      await saveState(state); overlay.remove(); render();
+    };
+  }
+
+  function applyScanToMember(tmp, i, raw){
+    const parts = raw.split(/[;|]/).map(s=>s.trim());
+    tmp.mitglieder[i].name = parts[0] || tmp.mitglieder[i].name;
+    // QR-Codes im alten Format Name;Funkruf;Gerät werden weiterhin akzeptiert.
+    // Der Funkruf gehört jetzt zum gesamten Trupp; das Gerätefeld wird ignoriert.
+    if(parts[1]) tmp.funkruf = parts[1];
+  }
+
+  // ---------- Start-Logik ----------
+  // Start ist ausschließlich möglich, wenn für jedes Mitglied ein Startdruck vorliegt.
+  function attemptStart(id){
+    const t = state.trupps.find(x=>x.id===id); if(!t) return;
+    const namesSet = t.mitglieder.length>0 && t.mitglieder.every(m => String(m.name||'').trim()!=='');
+    if(!namesSet){
+      alert('Der Trupp kann erst gestartet werden, wenn für alle Mitglieder ein Name eingetragen ist.');
+      return;
+    }
+    const allSet = t.mitglieder.every(m => m.startdruck!=null && m.startdruck!=='' && Number.isFinite(Number(m.startdruck)));
+    // Wenn noch Drücke fehlen ODER noch kein Auftrag hinterlegt ist,
+    // öffnen wir die Startmaske. So kann der Auftrag auch dann noch
+    // erfasst werden, wenn die Startdrücke bereits vorher eingetragen wurden.
+    if(!allSet || !String(t.auftrag||'').trim()) {
+      openStartModal(id);
+      return;
+    }
+    doStart(t, t.mitglieder.map(m=>({name:m.name, druck:m.startdruck})));
+  }
+
+  async function doStart(t, werte){
+    t.status = 'aktiv';
+    t.start = Date.now();
+    t.lastDruckCheck = Date.now();
+    t.druckReminderActive = false;
+    t.druckReminderLastAlarmAt = 0;
+    if(werte.length) t.druckwerte.push({zeit: Date.now(), werte, kontext:'start'});
+    addLog(t, 'Luftversorgung angeschlossen — Startdruck erfasst, Überwachung gestartet');
+    await saveState(state);
+    render();
+  }
+
+  // ---------- Start-Modal: Startdrücke und/oder Auftrag erfassen ----------
+  function openStartModal(id){
+    const t = state.trupps.find(x=>x.id===id); if(!t) return;
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>${esc(t.name)} — Luft anschließen</h2>
+        <p style="color:var(--text-dim); font-size:13px; margin-top:-8px;">Startdrücke erfassen. Der Timer beginnt erst mit "Start".</p>
+        <div class="field"><label>Auftrag</label><div class="quick-buttons">${['Linke Hand','Rechte Hand','Keller','1OG','2.OG','3.OG','Brandbekämpfung','Menschenrettung'].map(x=>`<button type="button" class="quick-btn ${t.auftrag===x?'selected':''}" data-start-auftrag="${esc(x)}">${esc(x)}</button>`).join('')}</div><input id="sd-auftrag" value="${esc(t.auftrag||'')}" placeholder="Freitext / eigener Auftrag" style="margin-top:8px;"></div>
+        <div id="druck-wrap">
+          ${t.mitglieder.map((m,i)=>`
+            <div class="field">
+              <label>${esc(m.name)} — Startdruck (bar)</label>
+              <input type="number" step="1" min="0" max="400" class="sd-input" data-i="${i}" value="${m.startdruck!=null?m.startdruck:''}" placeholder="z. B. 300">
+            </div>`).join('')}
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" id="sd-cancel">Abbrechen</button>
+          <button class="btn primary" id="sd-ok">Trupp starten</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const startAuftrag = t.auftrag || '';
+    overlay.querySelector('#sd-auftrag').oninput=e=>{t.auftrag=e.target.value;overlay.querySelectorAll('[data-start-auftrag]').forEach(b=>b.classList.toggle('selected',b.dataset.startAuftrag===t.auftrag));};
+    overlay.querySelectorAll('[data-start-auftrag]').forEach(b=>b.onclick=()=>{t.auftrag=b.dataset.startAuftrag;overlay.querySelector('#sd-auftrag').value=t.auftrag;overlay.querySelectorAll('[data-start-auftrag]').forEach(x=>x.classList.toggle('selected',x===b));});
+    overlay.querySelector('#sd-cancel').onclick = ()=> overlay.remove();
+    overlay.querySelector('#sd-ok').onclick = async ()=>{
+      overlay.querySelectorAll('.sd-input').forEach(inp=>{
+        const i = +inp.dataset.i;
+        t.mitglieder[i].startdruck = inp.value ? +inp.value : null;
+      });
+      const werte = t.mitglieder.filter(m=>m.startdruck!=null).map(m=>({name:m.name, druck:m.startdruck}));
+      overlay.remove();
+      await doStart(t, werte);
+    };
+  }
+
+  // ---------- Druck erfassen: normal / bei Ziel erreicht / bei Rückzug / Einsatzende ----------
+  function openDruckModal(id, context, onDone){
+    context = context || 'normal';
+    const t = state.trupps.find(x=>x.id===id); if(!t) return;
+    const last = lastDruckLine(t);
+    const isEnde = context === 'ende';
+
+    const titles = {
+      normal: 'Druckabfrage',
+      ziel: 'Einsatzziel erreicht — Druckabfrage',
+      rueckzug: 'Rückzug begonnen — Druckabfrage',
+      ende: 'Einsatzende — Abschlussdruck erfassen'
+    };
+    const okLabels = {
+      normal: 'Niedrigsten Druck speichern',
+      ziel: 'Ziel bestätigen & Druck speichern',
+      rueckzug: 'Rückzug bestätigen & Druck speichern',
+      ende: 'Druck speichern & Einsatz beenden'
+    };
+
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>${esc(t.name)} — ${titles[context]}</h2>
+        <p style="color:var(--text-dim); font-size:12px; margin-top:-8px;">
+          ${isEnde
+            ? 'Zum Einsatzende wird der Abschlussdruck von jedem Mitglied einzeln erfasst.'
+            : 'Es wird nur der niedrigste Druck des gesamten Trupps benötigt.'}
+        </p>
+        <div id="druck-wrap2">
+          ${isEnde ? t.mitglieder.map((m,i)=>{
+            const prev = last ? (last.werte.find(w=>w.name===m.name)||{}).druck : null;
+            return `<div class="field">
+              <label>${esc(m.name)} — Abschlussdruck (bar)</label>
+              <input type="number" step="1" min="0" max="400" class="cd-input" data-i="${i}" placeholder="${prev!=null?('zuletzt: '+prev):'bar'}">
+            </div>`;
+          }).join('') : `
+            <div class="field">
+              <label>Niedrigster Druck im Trupp (bar)</label>
+              <input type="number" step="1" min="0" max="400" class="cd-input" id="trupp-druck-input" placeholder="${last && last.werte.length ? ('zuletzt: '+Math.min(...last.werte.map(w=>Number(w.druck)))) : 'bar'}">
+            </div>`}
+        </div>
+        ${context === 'ziel' ? '<p style="color:var(--text-dim); font-size:12px;">Aus dem Verbrauch bis zum Einsatzziel wird die erforderliche Rückzugsreserve berechnet: Verbrauch auf dem Hinweg × 2. Maßgeblich ist die höchste daraus resultierende Schwelle.</p>' : ''}
+        <div class="modal-actions">
+          <button class="btn ghost" id="cd-cancel">Abbrechen</button>
+          <button class="btn primary" id="cd-ok">${okLabels[context]}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    function applyContextEvent(werte){
+      if(context === 'ziel'){
+        t.zielzeit = Date.now();
+        if(werte.length){
+          const niedrigsterZieldruck = Number(werte[0].druck);
+          t.rueckzugSchwelle = computeRueckzugSchwelle(t, niedrigsterZieldruck);
+          addLog(t, 'Einsatzziel erreicht — niedrigster Truppdruck: ' + niedrigsterZieldruck + ' bar. Erforderlicher Rückzugsdruck: ' + t.rueckzugSchwelle + ' bar (2× Hinwegverbrauch, ungünstigster Wert).');
+        }
+      } else if(context === 'rueckzug'){
+        t.rueckzugzeit = Date.now();
+        addLog(t, 'Rückzug begonnen — niedrigster Truppdruck: ' + (werte[0]?.druck ?? 'n/a') + ' bar');
+      } else if(context === 'ende'){
+        t.endzeit = Date.now();
+        t.status = 'beendet';
+        addLog(t, 'Einsatzende — Abschlussdruck: ' + werte.map(w=>w.name+' '+w.druck+' bar').join(', '));
+      } else {
+        addLog(t, 'Druckabfrage — niedrigster Truppdruck: ' + (werte[0]?.druck ?? 'n/a') + ' bar');
+      }
+    }
+
+    overlay.querySelector('#cd-cancel').onclick = ()=> overlay.remove();
+    overlay.querySelector('#cd-ok').onclick = async ()=>{
+      const werte = [];
+
+      if(isEnde){
+        let unvollstaendig = false;
+        overlay.querySelectorAll('.cd-input').forEach(inp=>{
+          const i = +inp.dataset.i;
+          if(inp.value === '') unvollstaendig = true;
+          else werte.push({name:t.mitglieder[i].name, druck:+inp.value});
+        });
+        if(unvollstaendig || werte.length !== t.mitglieder.length){
+          alert('Bitte für jedes Mitglied den Abschlussdruck eingeben.');
+          return;
+        }
+      } else {
+        const inp = overlay.querySelector('#trupp-druck-input');
+        if(!inp || inp.value === ''){
+          alert('Bitte den niedrigsten Druck des Trupps eingeben.');
+          return;
+        }
+        const druck = Number(inp.value);
+        if(!Number.isFinite(druck) || druck < 0){
+          alert('Bitte einen gültigen Druckwert eingeben.');
+          return;
+        }
+        werte.push({name:'Trupp (niedrigster Druck)', druck});
+      }
+
+      // ASUE v1.1.2 - reale Druckprüfung
+      const letzterDruck = lastDruckLine(t);
+      let vorher = null;
+      if(letzterDruck && letzterDruck.werte && letzterDruck.werte.length){
+        vorher = Math.min(...letzterDruck.werte.map(w => Number(w.druck)));
+      }
+
+      const neuer = Math.min(...werte.map(w => Number(w.druck)));
+
+      if(vorher !== null && neuer > vorher){
+        const weiter = confirm(
+          '⚠️ Ungewöhnlicher Druckwert\n\n' +
+          'Letzter Druck: ' + vorher + ' bar\n' +
+          'Neue Eingabe: ' + neuer + ' bar\n\n' +
+          'Der neue Wert ist höher als der vorherige Wert.\nBitte prüfen.\n\nTrotzdem übernehmen?'
+        );
+        if(!weiter){
+          return;
+        }
+      }
+
+      t.druckwerte.push({zeit: Date.now(), werte, kontext: context});
+      t.lastDruckCheck = Date.now();
+      t.druckReminderActive = false;
+      t.druckReminderLastAlarmAt = 0;
+      applyContextEvent(werte);
+      if(!isEnde) checkSofort(t, werte);
+      await saveState(state);
+      if(context === 'ende') saveHistory(state);
+      overlay.remove(); render();
+      if(context === 'ende' && typeof onDone === 'function') onDone();
+    };
+  }
+
+  // ---------- Ereignisse während des Einsatzes ----------
+  function openEreignisModal(id){
+    const t = state.trupps.find(x=>x.id===id); if(!t || t.status!=='aktiv') return;
+    const events = ['Geschosswechsel nach oben','Geschosswechsel nach unten','Person gefunden','Start Brandbekämpfung','Feuer aus','Wasser Marsch','Fenster geöffnet'];
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>${esc(t.name)} — Ereignis dokumentieren</h2>
+        <p style="color:var(--text-dim);font-size:12px;margin-top:-8px;">Ein Ereignis wird sofort mit Uhrzeit im Einsatzprotokoll gespeichert.</p>
+        <div class="event-grid">
+          ${events.map(x=>`<button type="button" class="quick-btn event" data-event="${esc(x)}">${esc(x)}</button>`).join('')}
+        </div>
+        <div class="field" style="margin-top:14px;">
+          <label>Freitext</label>
+          <input id="event-text" placeholder="Eigenes Ereignis / Lageänderung">
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" id="event-cancel">Abbrechen</button>
+          <button class="btn primary" id="event-save">Freitext speichern</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const save = async text=>{
+      text = String(text||'').trim();
+      if(!text){ alert('Bitte ein Ereignis auswählen oder einen Freitext eingeben.'); return; }
+      addLog(t, text);
+      await saveState(state);
+      overlay.remove(); render();
+    };
+    overlay.querySelectorAll('[data-event]').forEach(b=>b.onclick=()=>save(b.dataset.event));
+    overlay.querySelector('#event-save').onclick=()=>save(overlay.querySelector('#event-text').value);
+    overlay.querySelector('#event-cancel').onclick=()=>overlay.remove();
+  }
+
+  // ---------- QR Scan Modal ----------
+  function openScanModal(onResult){
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="text-align:center;">
+        <h2>QR-Code scannen</h2>
+        <div class="scan-box"><video playsinline autoplay muted></video><div class="scan-hint">Code in den Rahmen halten</div></div>
+        <canvas style="display:none;"></canvas>
+        <input id="qr-camera-file" type="file" accept="image/*" capture="environment" style="display:none;">
+        <div id="scan-camera-fallback" style="display:block;margin:10px 0 14px;">
+          <button class="btn primary" id="scan-photo">📷 QR-Code per Foto erfassen</button>
+        </div>
+        <div class="field" style="text-align:left;"><label>Oder manuell eingeben (Name;Funkruf)</label><input id="manual-scan" placeholder="Mustermann;Angriffstrupp 1"></div>
+        <div class="modal-actions">
+          <button class="btn ghost" id="scan-cancel">Abbrechen</button>
+          <button class="btn primary" id="scan-manual-ok">Übernehmen</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const video = overlay.querySelector('video');
+    const canvas = overlay.querySelector('canvas');
+    const ctx = canvas.getContext('2d', {willReadFrequently:true});
+    let raf = null, stopped = false, localStream = null;
+    let detector = null;
+    try {
+      if('BarcodeDetector' in window){
+        const formats = ['qr_code'];
+        detector = new BarcodeDetector({formats});
+      }
+    } catch(e) { detector = null; }
+
+    const fileInput = overlay.querySelector('#qr-camera-file');
+    const fallback = overlay.querySelector('#scan-camera-fallback');
+    const hint = overlay.querySelector('.scan-hint');
+
+    function showCameraFallback(message){
+      hint.textContent = message || 'Live-Kamera nicht verfügbar. Du kannst alternativ den QR-Code per Foto erfassen.';
+      fallback.style.display = 'block';
+    }
+
+    async function detectFrame(){
+      if(stopped || video.readyState < video.HAVE_ENOUGH_DATA) return null;
+      if(!window.jsQR) return null;
+
+      const w = video.videoWidth, h = video.videoHeight;
+      if(!w || !h) return null;
+
+      // iPad/Safari: jsQR als Hauptscanner verwenden. BarcodeDetector kann
+      // auf iOS je nach Version unzuverlässig sein und wird deshalb für die
+      // Live-Kamera bewusst nicht vorgeschaltet.
+      const side = Math.min(w, h);
+      const crop = Math.min(side, 900);
+      const sx = Math.max(0, Math.round((w - crop) / 2));
+      const sy = Math.max(0, Math.round((h - crop) / 2));
+
+      canvas.width = crop;
+      canvas.height = crop;
+      ctx.drawImage(video, sx, sy, crop, crop, 0, 0, crop, crop);
+      let img = ctx.getImageData(0, 0, crop, crop);
+      let code = jsQR(img.data, img.width, img.height, {inversionAttempts:'attemptBoth'});
+      if(code && code.data) return code.data;
+
+      // Zweiter Versuch mit kleinerem Bild – auf älteren iPads deutlich
+      // schneller und manchmal robuster bei ungünstiger Beleuchtung.
+      const small = 600;
+      const smallCanvas = document.createElement('canvas');
+      smallCanvas.width = small;
+      smallCanvas.height = small;
+      const sctx = smallCanvas.getContext('2d', {willReadFrequently:true});
+      sctx.drawImage(video, sx, sy, crop, crop, 0, 0, small, small);
+      img = sctx.getImageData(0, 0, small, small);
+      code = jsQR(img.data, img.width, img.height, {inversionAttempts:'attemptBoth'});
+      if(code && code.data) return code.data;
+
+      return null;
+    }
+
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      showCameraFallback('Live-Kamera ist hier nicht verfügbar.');
+    }else{
+      navigator.mediaDevices.getUserMedia({
+        video:{facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:30}},
+        audio:false
+      }).then(async s=>{
+        localStream = s;
+        video.srcObject = s;
+        try { await video.play(); } catch(e) {}
+        tick();
+      }).catch(err=>{
+        console.warn('QR-Kamera konnte nicht gestartet werden:', err);
+        showCameraFallback('Kamera konnte nicht gestartet werden. Bitte Kamerazugriff erlauben.');
+      });
+    }
+
+    overlay.querySelector('#scan-photo').onclick = ()=> fileInput.click();
+    fileInput.onchange = async ()=>{
+      const file = fileInput.files && fileInput.files[0];
+      if(!file) return;
+      hint.textContent = 'QR-Code wird erkannt …';
+      try{
+        const img = new Image();
+        img.onload = async ()=>{
+          try {
+            // Auf iPad/Safari bewusst direkt jsQR verwenden.
+            if(!window.jsQR){ URL.revokeObjectURL(img.src); hint.textContent='QR-Erkennung ist nicht geladen. Bitte App einmal mit Internet öffnen.'; return; }
+            const max = 2200;
+            const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+            const iw = Math.max(1, Math.round(img.naturalWidth * scale));
+            const ih = Math.max(1, Math.round(img.naturalHeight * scale));
+            canvas.width = iw; canvas.height = ih;
+            ctx.drawImage(img,0,0,iw,ih);
+            let data = ctx.getImageData(0,0,iw,ih);
+            let code = jsQR(data.data,data.width,data.height,{inversionAttempts:'attemptBoth'});
+            if(!code){
+              const size=Math.min(iw,ih), sx=Math.max(0,Math.round((iw-size)/2)), sy=Math.max(0,Math.round((ih-size)/2));
+              const c=document.createElement('canvas'); c.width=size; c.height=size;
+              const cc=c.getContext('2d',{willReadFrequently:true}); cc.drawImage(img,sx/scale,sy/scale,size/scale,size/scale,0,0,size,size);
+              data=cc.getImageData(0,0,size,size);
+              code=jsQR(data.data,data.width,data.height,{inversionAttempts:'attemptBoth'});
+            }
+            URL.revokeObjectURL(img.src);
+            if(code && code.data) finish(code.data);
+            else hint.textContent = 'Kein QR-Code erkannt. Bitte den QR-Code groß, vollständig und scharf fotografieren.';
+          } catch(e){
+            console.error(e);
+            hint.textContent = 'Foto konnte nicht verarbeitet werden.';
+          }
+        };
+        img.onerror = ()=>{ URL.revokeObjectURL(img.src); hint.textContent = 'Foto konnte nicht gelesen werden.'; };
+        img.src = URL.createObjectURL(file);
+      }catch(e){
+        console.error(e);
+        hint.textContent = 'Foto konnte nicht verarbeitet werden.';
+      }
+    };
+
+    let detecting = false;
+    async function tick(){
+      if(stopped || detecting) return;
+      detecting = true;
+      const result = await detectFrame();
+      detecting = false;
+      if(result){ finish(result); return; }
+      raf = requestAnimationFrame(tick);
+    }
+    function cleanup(){
+      stopped = true;
+      if(raf) cancelAnimationFrame(raf);
+      if(localStream){ localStream.getTracks().forEach(t=>t.stop()); }
+      overlay.remove();
+    }
+    function finish(data){ cleanup(); onResult(String(data || '').trim()); }
+
+    overlay.querySelector('#scan-cancel').onclick = cleanup;
+    overlay.querySelector('#scan-manual-ok').onclick = ()=>{
+      const v = overlay.querySelector('#manual-scan').value.trim();
+      if(v) finish(v); else hint.textContent = 'Bitte QR-Code scannen oder Daten eingeben.';
+    };
+  }
+
+  // ---------- Gespeicherte Einsätze ----------
+  async function openHistoryModal(){
+    const history = await loadHistory();
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:860px;">
+        <h2>Gespeicherte Einsätze</h2>
+        <p style="color:var(--text-dim);font-size:13px;">Abgeschlossene Einsätze werden lokal auf diesem iPad gespeichert. Von hier kannst du den jeweiligen Einsatz im Nachgang als PDF oder CSV exportieren.</p>
+        <div id="history-list"></div>
+        <div class="modal-actions"><button class="btn ghost" id="hist-close">Schließen</button></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const list = overlay.querySelector('#history-list');
+        const drawList = ()=>{
+if(!history.length){
+      list.innerHTML='<div class="empty">Noch keine abgeschlossenen Einsätze gespeichert.</div>';
+    } else {
+      list.innerHTML = history.map((e,i)=>{
+        const count = (e.trupps||[]).filter(t=>t.status!=='vorbereitet').length;
+        const abgeschlossen = (e.trupps||[]).filter(t=>t.status==='beendet').length;
+        return `<div class="druck-summary" style="margin-bottom:10px;">
+          <div><span><b>${esc(e.einsatz?.ort||'Ohne Angabe')}</b></span><b>${esc(e.einsatz?.datum||'')}</b></div>
+          <div><span>Überwachung</span><b>${esc(e.einsatz?.leiter||'')}</b></div>
+          <div><span>Trupps</span><b>${count} (${abgeschlossen} beendet)</b></div>
+          <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+            <button class="btn small hist-csv" data-i="${i}">CSV</button>
+            <button class="btn primary hist-pdf" data-i="${i}">PDF-Detailbericht</button>
+          </div>
+        </div>`;
+      }).join('');
+
+      list.querySelectorAll('.hist-pdf').forEach(btn=>{
+        btn.onclick = ()=> exportPDF(history[+btn.dataset.i]);
+      });
+      list.querySelectorAll('.hist-csv').forEach(btn=>{
+        btn.onclick = ()=> exportCSV(history[+btn.dataset.i]);
+      });
+    }
+    };
+    drawList();
+
+    // Abgeschlossene Einsätze der Feuerwehr aus der Cloud ergänzen (Hintergrund, blockiert nichts)
+    (async()=>{
+      try{
+        const client=cloudClient(); const lh=await licenseHash();
+        if(!client || !currentSession || !lh || !navigator.onLine) return;
+        const {data,error}=await client.rpc('historie_laden',{p_hash:lh});
+        if(error || !Array.isArray(data)) return;
+        const ids=new Set(history.map(x=>x?.einsatz?.id));
+        let added=0;
+        data.forEach(z=>{
+          if(z?.einsatz && !ids.has(z.einsatz.id)){ history.push(z); ids.add(z.einsatz.id); added++; try{ saveHistory(z); }catch(e){} }
+        });
+        if(added && document.body.contains(overlay)){
+          history.sort((a,b)=>String(b.einsatz?.datum||'').localeCompare(String(a.einsatz?.datum||'')));
+          drawList();
+        }
+      }catch(e){ console.warn('Cloud-Historie nicht geladen:',e); }
+    })();
+    overlay.querySelector('#hist-close').onclick = ()=>overlay.remove();
+  }
+
+  // ---------- Nachweis / Export ----------
+  function buildNachweisRows(einsatzState){
+    const rows = [];
+    einsatzState.trupps.forEach(t=>{
+      if(t.status==='vorbereitet') return;
+      t.mitglieder.forEach(m=>{
+        const dauer = t.endzeit ? Math.round((t.endzeit - t.start)/60000) : Math.round((Date.now()-t.start)/60000);
+        rows.push({name:m.name, datum:einsatzState.einsatz.datum, ort:einsatzState.einsatz.ort, funkruf:t.funkruf||'', dauer, trupp:t.name, startdruck:m.startdruck||''});
+      });
+    });
+    return rows;
+  }
+
+  function exportCSV(einsatzState){
+    const rows = buildNachweisRows(einsatzState);
+    const header = 'Name;Trupp;Funkruf;Datum;Einsatzort;Startdruck;Dauer_min\n';
+    const csv = header + rows.map(r=>[r.name,r.trupp,r.funkruf,r.datum,r.ort,r.startdruck,r.dauer].join(';')).join('\n');
+    const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'atemschutznachweis_'+einsatzState.einsatz.datum+'.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function openNachweisModal(einsatzState){
+    einsatzState = einsatzState || state;
+    const rows = buildNachweisRows(einsatzState);
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:760px;">
+        <h2>Atemschutznachweis</h2>
+        <table class="nachweis">
+          <thead><tr><th>Name</th><th>Trupp</th><th>Funkruf</th><th>Datum</th><th>Einsatzort</th><th>Startdruck</th><th>Dauer (min)</th></tr></thead>
+          <tbody>${rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.trupp)}</td><td>${esc(r.funkruf)}</td><td>${esc(r.datum)}</td><td>${esc(r.ort)}</td><td>${esc(r.startdruck)}</td><td>${r.dauer}</td></tr>`).join('') || '<tr><td colspan="7" style="color:var(--text-dim)">Noch keine Daten</td></tr>'}</tbody>
+        </table>
+        <div class="modal-actions">
+          <button class="btn ghost" id="nw-close">Schließen</button>
+          <button class="btn small" id="nw-csv">Als CSV (Kurzübersicht)</button>
+          <button class="btn primary" id="nw-pdf">Als PDF (Detailbericht)</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#nw-close').onclick = ()=> overlay.remove();
+    overlay.querySelector('#nw-csv').onclick = ()=> exportCSV(einsatzState);
+    overlay.querySelector('#nw-pdf').onclick = ()=> exportPDF(einsatzState);
+  }
+
+  function openNachweisModal(){
+    const rows = [];
+    state.trupps.forEach(t=>{
+      if(t.status==='vorbereitet') return;
+      t.mitglieder.forEach(m=>{
+        const dauer = t.endzeit ? Math.round((t.endzeit - t.start)/60000) : Math.round((Date.now()-t.start)/60000);
+        rows.push({name:m.name, datum:state.einsatz.datum, ort:state.einsatz.ort, funkruf:t.funkruf||'', dauer, trupp:t.name, startdruck:m.startdruck||''});
+      });
+    });
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:760px;">
+        <h2>Atemschutznachweis</h2>
+        <table class="nachweis">
+          <thead><tr><th>Name</th><th>Trupp</th><th>Funkruf</th><th>Datum</th><th>Einsatzort</th><th>Startdruck</th><th>Dauer (min)</th></tr></thead>
+          <tbody>${rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.trupp)}</td><td>${esc(r.funkruf)}</td><td>${esc(r.datum)}</td><td>${esc(r.ort)}</td><td>${esc(r.startdruck)}</td><td>${r.dauer}</td></tr>`).join('') || '<tr><td colspan="7" style="color:var(--text-dim)">Noch keine Daten</td></tr>'}</tbody>
+        </table>
+        <div class="modal-actions">
+          <button class="btn ghost" id="nw-close">Schließen</button>
+          <button class="btn small" id="nw-csv">Als CSV (Kurzübersicht)</button>
+          <button class="btn primary" id="nw-pdf">Als PDF (Detailbericht)</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#nw-close').onclick = ()=> overlay.remove();
+    overlay.querySelector('#nw-csv').onclick = ()=>{
+      const header = 'Name;Trupp;Funkruf;Datum;Einsatzort;Startdruck;Dauer_min\n';
+      const csv = header + rows.map(r=>[r.name,r.trupp,r.funkruf,r.datum,r.ort,r.startdruck,r.dauer].join(';')).join('\n');
+      const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'atemschutznachweis_'+state.einsatz.datum+'.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    };
+    overlay.querySelector('#nw-pdf').onclick = ()=> exportPDF();
+  }
+
+  // ---------- Detaillierter PDF-Bericht, sortiert nach Trupps ----------
+  async function exportPDF(einsatzState, options){
+    einsatzState = einsatzState || state;
+    options = options || {};
+    if(!window.jspdf || !window.jspdf.jsPDF){
+      if(!options.silent){
+        alert('PDF-Bibliothek konnte nicht geladen werden. Bitte die App einmal mit Internet öffnen und erneut versuchen.');
+      }
+      console.warn('PDF-Bibliothek nicht verfügbar.');
+      return false;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:'mm', format:'a4'});
+    const pageBottom = 285;
+    let y = 15;
+
+    function ensureSpace(needed){
+      if(y + needed > pageBottom){ doc.addPage(); y = 15; }
+    }
+    function line(text, x, size, bold){
+      doc.setFontSize(size||10);
+      doc.setFont(undefined, bold?'bold':'normal');
+      doc.text(String(text), x, y);
+    }
+
+    line('Atemschutznachweis', 14, 17, true); y+=8;
+    line(`Einsatzort: ${einsatzState.einsatz.ort}`, 14, 10, false); y+=5;
+    line(`Datum: ${einsatzState.einsatz.datum}`, 14, 10, false); y+=5;
+    line(`Atemschutzüberwachung: ${einsatzState.einsatz.leiter}`, 14, 10, false); y+=9;
+
+    const sortedTrupps = [...einsatzState.trupps]
+      .filter(t=>t.status!=='vorbereitet')
+      .sort((a,b)=>a.name.localeCompare(b.name,'de'));
+
+    if(sortedTrupps.length === 0){
+      line('Noch keine Trupps mit Einsatzdaten vorhanden.', 14, 11, false);
+    }
+
+    sortedTrupps.forEach((t)=>{
+      ensureSpace(14);
+      doc.setDrawColor(180); doc.setLineWidth(0.3);
+      doc.line(14, y-3, 196, y-3);
+      line(t.name, 14, 13, true); y+=6.5;
+      if(t.funkruf){ line(`Funkruf: ${t.funkruf}`, 16, 9.5, false); y+=4.6; }
+      if(t.auftrag){ line(`Auftrag: ${t.auftrag}`, 16, 9.5, false); y+=4.6; }
+
+      t.mitglieder.forEach(m=>{
+        ensureSpace(5);
+        line(`${m.name} — Startdruck: ${m.startdruck!=null?m.startdruck+' bar':'n/a'}`, 16, 9.5, false);
+        y+=4.6;
+      });
+      y+=1.5;
+
+      ensureSpace(20);
+      line('Zeiten', 16, 10, true); y+=5;
+      line(`Luft angeschlossen: ${t.start? new Date(t.start).toLocaleString('de-DE'):'-'}`, 18, 9.5, false); y+=4.4;
+      if(t.zielzeit){ line(`Einsatzziel erreicht: ${new Date(t.zielzeit).toLocaleString('de-DE')}`, 18, 9.5, false); y+=4.4; }
+      if(t.rueckzugzeit){ line(`Rückzug begonnen: ${new Date(t.rueckzugzeit).toLocaleString('de-DE')}`, 18, 9.5, false); y+=4.4; }
+      if(t.endzeit){ line(`Einsatzende: ${new Date(t.endzeit).toLocaleString('de-DE')}`, 18, 9.5, false); y+=4.4; }
+      const dauer = t.endzeit ? Math.round((t.endzeit-t.start)/60000) : (t.start ? Math.round((Date.now()-t.start)/60000) : 0);
+      line(`Einsatzzeit gesamt: ${dauer} min (Soll: ${t.erwarteteZeitMin} min)`, 18, 9.5, false); y+=6;
+
+      if(Number.isFinite(Number(t.rueckzugSchwelle))){
+        ensureSpace(10);
+        line('Benötigter Rückzugsdruck (Reserve für Rückweg)', 16, 10, true); y+=5;
+        line(`Trupp (ungünstigster Wert): ${t.rueckzugSchwelle} bar`, 18, 9.5, false); y+=4.4;
+        y+=2;
+      }
+
+      if(t.druckwerte && t.druckwerte.length){
+        ensureSpace(10);
+        line('Druckabfragen', 16, 10, true); y+=5.5;
+        doc.setFontSize(9); doc.setFont(undefined,'bold');
+        doc.text('Zeit', 18, y); doc.text('Mitglied', 46, y); doc.text('Druck', 88, y); doc.text('Anlass', 108, y); doc.text('Hinweis', 148, y);
+        y+=1; doc.setDrawColor(210); doc.line(14, y, 196, y); y+=4;
+        doc.setFont(undefined,'normal');
+        const kontextLabel = {start:'Startdruck', normal:'Zwischenwert', ziel:'Einsatzziel', rueckzug:'Rückzug', ende:'Einsatzende', undefined:'Zwischenwert'};
+        t.druckwerte.forEach(entry=>{
+          entry.werte.forEach(w=>{
+            ensureSpace(4.6);
+            const schwelle = Number(t.rueckzugSchwelle);
+            const warn = entry.kontext !== 'start' && entry.kontext !== 'ende' && Number.isFinite(schwelle) && w.druck <= schwelle ? 'RÜCKZUG SOFORT!' : '';
+            doc.setFontSize(9);
+            doc.text(new Date(entry.zeit).toLocaleTimeString('de-DE'), 18, y);
+            doc.text(String(w.name), 46, y);
+            doc.text(String(w.druck)+' bar', 88, y);
+            doc.text(kontextLabel[entry.kontext]||'Zwischenwert', 108, y);
+            if(warn){ doc.setTextColor(200,30,20); doc.text(warn, 148, y); doc.setTextColor(0,0,0); }
+            y+=4.6;
+          });
+        });
+        y+=3;
+      }
+
+      ensureSpace(8);
+      line('Ereignisprotokoll', 16, 10, true); y+=5;
+      doc.setFontSize(8.5); doc.setFont(undefined,'normal');
+      (t.log || []).forEach(l=>{
+        ensureSpace(4.2);
+        const lines = doc.splitTextToSize(`${new Date(l.zeit).toLocaleTimeString('de-DE')} — ${l.text}`, 178);
+        lines.forEach(ln=>{ ensureSpace(4.2); doc.text(ln, 18, y); y+=4.2; });
+      });
+      y+=6;
+    });
+
+    const filename = 'atemschutznachweis_'+einsatzState.einsatz.datum+'.pdf';
+    const blob = doc.output('blob');
+
+    // Sofortiger Download: funktioniert auf Android/Chrome und Safari/iPad
+    // als normale lokale Datei (Downloads/Dateien – je nach System).
+    try{
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 1500);
+    }catch(e){
+      console.warn('PDF-Download konnte nicht gestartet werden:', e);
+    }
+
+    // Zusätzlich als lokale Kopie in IndexedDB ablegen. Dadurch bleibt der
+    // Detailbericht auch dann lokal erhalten, wenn der Browser den Download
+    // nicht direkt in den Downloads-Ordner legt.
+    try{
+      if(einsatzState.einsatz && einsatzState.einsatz.id){
+        await idbSet(PDF_HISTORY_KEY + einsatzState.einsatz.id, {
+          filename,
+          savedAt: Date.now(),
+          blob
+        });
+      }
+    }catch(e){
+      console.warn('Lokale PDF-Kopie konnte nicht gespeichert werden:', e);
+    }
+
+    return true;
+  }
+  // ---------- Timer / Erinnerungs-Loop ----------
+  const warned = {};
+  function tickWarnings(){
+    if(!state) return;
+    let changed = false;
+    state.trupps.forEach(t=>{
+      if(t.status !== 'aktiv') return;
+      if(!warned[t.id]) warned[t.id] = {w1:false, w2:false};
+      const elapsedSec = (Date.now() - t.start)/1000;
+      const totalSec = t.erwarteteZeitMin*60;
+      if(elapsedSec >= (1/3)*totalSec && !warned[t.id].w1){
+        warned[t.id].w1 = true; addLog(t, '1/3 der Einsatzzeit erreicht — Druckkontrolle'); alarmDouble(); changed = true;
+      }
+      if(elapsedSec >= (2/3)*totalSec && !warned[t.id].w2){
+        warned[t.id].w2 = true; addLog(t, '2/3 der Einsatzzeit erreicht — Rückzug prüfen'); alarmTriple(); changed = true;
+      }
+      // Druckabfrage alle 10 Minuten: 10, 20, 30 ... Minuten seit der
+      // letzten tatsächlichen Druckabfrage. Bleibt die Abfrage offen, wird
+      // bei jedem weiteren 10-Minuten-Punkt erneut akustisch erinnert.
+      const minsSinceCheck = (Date.now() - (t.lastDruckCheck||t.start)) / 60000;
+      const reminderIndex = Math.floor(minsSinceCheck / DRUCK_INTERVAL_MIN);
+      if(reminderIndex >= 1){
+        t.druckReminderActive = true;
+        if(Number(t.druckReminderLastAlarmAt||0) < reminderIndex){
+          t.druckReminderLastAlarmAt = reminderIndex;
+          addLog(t, 'Erinnerung: Druckabfrage fällig (' + (reminderIndex * DRUCK_INTERVAL_MIN) + ' min seit letzter Abfrage)');
+          alarmDruck();
+          changed = true;
+        }
+      }
+    });
+    if(changed) saveState(state);
+    if(document.getElementById('grid-active') || document.getElementById('grid-prep')){
+      const logScrollPositions = captureLogScrollPositions();
+      state.trupps.forEach(t=>{
+        const card = document.getElementById('card-'+t.id);
+        if(card) card.outerHTML = truppCard(t);
+      });
+      bindCard(state.trupps);
+      restoreLogScrollPositions(logScrollPositions);
+    }
+  }
+  setInterval(tickWarnings, 1000);
+  setInterval(()=>syncOfflineEinsatzIfPossible(), 15000);
+  setInterval(()=>touchParticipant(), 30000);
+  window.addEventListener('online', ()=>{ touchParticipant(); refreshCloudStateIfAvailable(); });
+
+  // Offline-first: lokaler Speicher bleibt aktiv; bei bestehender Verbindung
+  // werden Cloud-Einsätze per Supabase Realtime zwischen den Geräten synchronisiert.
+
+  (async function init(){
+    try{ state = await loadState(); }catch(e){ state = null; }
+    const client=cloudClient();
+    if(!client){
+      authReady=true;
+      currentSession={user:{id:'local-'+uid()}};
+      renderRolePicker('Offline-Modus: Einsatzdaten werden lokal gespeichert.');
+      return;
+    }
+    client.auth.onAuthStateChange((event,session)=>{
+      setTimeout(()=>handleAuthReady(session),0);
+    });
+    const {data}=await client.auth.getSession();
+    if(data.session){
+      await handleAuthReady(data.session);
+    }else{
+      const {data:anonData,error:anonError}=await client.auth.signInAnonymously({options:{data:{app:'Atemschutzüberwachung'}}});
+      if(anonError){
+        console.warn('Anonyme Anmeldung fehlgeschlagen:',anonError);
+        currentSession={user:{id:'local-'+uid()}};
+        authReady=true;
+        renderRolePicker('Offline-Modus: Einsatzdaten werden lokal gespeichert.');
+      }else{
+        await handleAuthReady(anonData.session);
+      }
+    }
+  })();
+
+})();
+</script>
+<script>
+// PWA: Service Worker wird nur in einem sicheren Kontext registriert (HTTPS).
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(err =>
+      console.warn('Service Worker konnte nicht registriert werden:', err)
+    );
+  });
+}
+</script>
+
+<!-- ASUE_V102_FEATURES -->
+<script>
+const ASUE_V102_FEATURES = {
+  roleKey: 'atemschutz:rolle',
+
+  getRole(){
+    return localStorage.getItem(this.roleKey) || '';
+  },
+
+  setRole(role){
+    localStorage.setItem(this.roleKey, role);
+  },
+
+  pressureWarning(oldValue, newValue){
+    const oldP = Number(oldValue);
+    const newP = Number(newValue);
+
+    if(oldP && newP > oldP){
+      return confirm(
+        '⚠️ Ungewöhnlicher Druckwert\n\n' +
+        'Vorher: ' + oldP + ' bar\n' +
+        'Neu: ' + newP + ' bar\n\n' +
+        'Bitte prüfen.\n\nTrotzdem übernehmen?'
+      );
+    }
+    return true;
+  }
+};
+</script>
+
+
+<!-- ASUE_V103_FEATURES -->
+<script>
+const APP_VERSION = "1.1.2";
+
+const ASUE_V103 = {
+  roleKey: "atemschutz:rolle",
+
+  getRole(){
+    return localStorage.getItem(this.roleKey) || "";
+  },
+
+  setRole(role){
+    localStorage.setItem(this.roleKey, role);
+  },
+
+  checkPressure(previous, current){
+    const oldValue = Number(previous);
+    const newValue = Number(current);
+
+    if(oldValue && newValue > oldValue){
+      return confirm(
+        "⚠️ Ungewöhnlicher Druckwert\n\n" +
+        "Letzter Druck: " + oldValue + " bar\n" +
+        "Neuer Druck: " + newValue + " bar\n\n" +
+        "Bitte prüfen.\n\nTrotzdem übernehmen?"
+      );
+    }
+
+    return true;
+  }
+};
+</script>
+
+
+
+
+
+
+
+
+<!-- ASUE_V109_LICENSE_ONLY -->
+<style>
+.asue-license-line{
+  margin-top:12px;
+  padding:8px 0;
+  font-size:12px;
+  line-height:1.5;
+  opacity:.9;
+  text-align:center;
+}
+</style>
+<script>
+function asueV109License(){
+  const l = JSON.parse(localStorage.getItem("asue:lizenz") || "{}");
+  if(!l || Object.keys(l).length===0) return "";
+  return `
+  <div class="asue-license-line">
+    🔐 ${l.feuerwehr || "-"}<br>
+    Lizenz: <b>${l.code || l.lizenz_code || "-"}</b><br>
+    🟢 Aktiv · gültig bis ${l.gueltig_bis || "-"}<br>
+    Gerät: ${l.geraete_name || l.device_name || l.geraetename || "-"}
+  </div>`;
+}
+</script>
+
+
+<!-- ASUE_V110_LICENSE_CARD -->
+<style>
+.asue-license-card{
+  margin:14px auto 8px;
+  padding:10px 14px;
+  max-width:520px;
+  text-align:center;
+  font-size:12px;
+  line-height:1.6;
+  opacity:.9;
+  border-top:1px solid rgba(255,255,255,.08);
+}
+.asue-license-card .title{
+  font-weight:600;
+  margin-bottom:4px;
+}
+</style>
+<script>
+function asueV110LicenseCard(){
+ const l = JSON.parse(localStorage.getItem("asue:lizenz") || "{}");
+ if(!l || Object.keys(l).length===0) return "";
+
+ const code = l.code || l.lizenz_code || "-";
+ const device = l.geraete_name || l.device_name || l.geraetename || "-";
+  const deviceId = l.geraete_id || l.device_id || l.geraeteID || "-";
+
+ return `
+ <div class="asue-license-card">
+   <div class="title">🔐 Lizenz</div>
+   ${l.feuerwehr || "-"}<br>
+   <b>${code}</b><br>
+   🟢 Aktiv · gültig bis ${l.gueltig_bis || "-"}<br>
+   Gerät: ${device}
+ </div>`;
+}
+</script>
+
+
+<!-- ASUE_V111_VISIBLE_LICENSE -->
+<style>
+.asue-v111-license{
+  margin:12px;
+  padding:10px;
+  text-align:center;
+  font-size:12px;
+  line-height:1.5;
+  border-top:1px solid rgba(128,128,128,.3);
+}
+</style>
+<script>
+function renderV111License(){
+  const l = JSON.parse(localStorage.getItem("asue:lizenz") || "{}");
+  const code = l.code || l.lizenz_code || "-";
+  const fw = l.feuerwehr || "-";
+  const device = l.geraete_name || l.device_name || l.geraetename || "-";
+  const deviceId = l.geraete_id || l.device_id || l.geraeteID || "-";
+  const date = l.gueltig_bis || "-";
+
+  const old = document.getElementById("ASUE_V111_VISIBLE_LICENSE");
+  if(old) old.remove();
+
+  const div=document.createElement("div");
+  div.id="ASUE_V111_VISIBLE_LICENSE";
+  div.className="asue-v111-license";
+  div.innerHTML =
+    "🔐 Lizenz<br>" +
+    fw + "<br>" +
+    "<b>" + code + "</b><br>" +
+    (window.asueLicenseStatusText ? window.asueLicenseStatusText(l).replace("<br>", " · gültig bis " + date + "<br>") : "🟢 Aktiv · gültig bis " + date) + "<br>" +
+    "Gerät: <b>" + device + "</b><br>" +
+    "Geräte-ID: " + deviceId;
+  document.body.appendChild(div);
+}
+
+window.addEventListener("load", renderV111License);
+</script>
+
+</body>
+</html>
